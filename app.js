@@ -401,7 +401,7 @@ document.getElementById("generateBtn").addEventListener("click", () => {
     });
   } else if (templateType.value === "linear") {
     weeks = generateLinear(lifts, {
-      weeksCount: numVal("linearWeeks", 5),
+      weeksCount: numVal("linearWeeks", 4),
       startPct: numVal("linearStartPct", 70),
       endPct: numVal("linearEndPct", 90),
       startReps: numVal("linearStartReps", 5),
