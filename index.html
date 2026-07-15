@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>力量課表</title>
+<meta name="description" content="Powerlifting 課表規劃與訓練紀錄" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>力量課表</h1>
+    <p>三大項課表規劃 · 訓練紀錄 · 進度追蹤</p>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button class="tab-btn active" data-tab="setup">最大重量</button>
+    <button class="tab-btn" data-tab="program">課表產生器</button>
+    <button class="tab-btn" data-tab="log">訓練紀錄</button>
+    <button class="tab-btn" data-tab="progress">進度</button>
+  </nav>
+
+  <!-- 最大重量 -->
+  <section class="tab-panel active" id="panel-setup">
+    <section class="card">
+      <h2>追蹤動作與目前 1RM</h2>
+      <div class="lifts-list" id="liftsList"></div>
+      <div class="add-lift-row">
+        <input type="text" id="newLiftName" placeholder="新增動作名稱,例如:肩推" />
+        <input type="number" id="newLiftOneRM" placeholder="1RM (kg)" min="0" step="0.5" />
+        <button class="btn-secondary" id="addLiftBtn">新增</button>
+      </div>
+      <p class="note">預設已建立蹲舉、臥推、硬拉三大項。1RM 會用來換算課表產生器裡的重量。</p>
+    </section>
+  </section>
+
+  <!-- 課表產生器 -->
+  <section class="tab-panel" id="panel-program">
+    <section class="card">
+      <h2>產生新課表</h2>
+      <div class="field-row">
+        <label>週期化模型</label>
+        <select id="templateType">
+          <option value="531">5/3/1(Wendler)</option>
+          <option value="linear">線性週期化</option>
+        </select>
+      </div>
+
+      <div class="field-row">
+        <label>包含動作</label>
+        <div class="checkbox-list" id="liftCheckboxes"></div>
+      </div>
+
+      <div id="config531" class="template-config">
+        <div class="field-row">
+          <label>訓練最大重量百分比(TM %)</label>
+          <input type="number" id="tmPercent" value="90" min="50" max="100" />
+        </div>
+        <div class="field-row">
+          <label>產生幾個循環(每循環 4 週)</label>
+          <input type="number" id="cycles531" value="1" min="1" max="6" />
+        </div>
+      </div>
+
+      <div id="configLinear" class="template-config" style="display:none;">
+        <div class="field-row">
+          <label>總週數</label>
+          <input type="number" id="linearWeeks" value="5" min="2" max="12" />
+        </div>
+        <div class="field-row">
+          <label>起始 % 1RM → 結束 % 1RM</label>
+          <div class="inline-pair">
+            <input type="number" id="linearStartPct" value="70" min="30" max="100" />
+            <span>→</span>
+            <input type="number" id="linearEndPct" value="90" min="30" max="100" />
+          </div>
+        </div>
+        <div class="field-row">
+          <label>起始次數 → 結束次數</label>
+          <div class="inline-pair">
+            <input type="number" id="linearStartReps" value="5" min="1" max="15" />
+            <span>→</span>
+            <input type="number" id="linearEndReps" value="2" min="1" max="15" />
+          </div>
+        </div>
+        <div class="field-row">
+          <label>每個訓練日組數</label>
+          <input type="number" id="linearSets" value="5" min="1" max="10" />
+        </div>
+        <div class="field-row checkbox-field">
+          <label><input type="checkbox" id="linearDeload" checked /> 最後一週改為減量週</label>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <label>重量進位單位(kg)</label>
+        <input type="number" id="roundIncrement" value="2.5" min="0.5" step="0.5" />
+      </div>
+
+      <button class="btn-primary" id="generateBtn">產生課表(將覆蓋目前課表)</button>
+    </section>
+
+    <section class="card">
+      <h2>目前課表</h2>
+      <div id="programView"></div>
+    </section>
+  </section>
+
+  <!-- 訓練紀錄 -->
+  <section class="tab-panel" id="panel-log">
+    <section class="card">
+      <h2>新增紀錄</h2>
+      <div class="field-row">
+        <label>日期</label>
+        <input type="date" id="logDate" />
+      </div>
+      <div class="field-row">
+        <label>動作</label>
+        <select id="logLiftSelect"></select>
+        <input type="text" id="logCustomName" placeholder="自訂動作名稱" style="display:none;margin-top:8px;" />
+      </div>
+      <div class="field-row triple">
+        <div>
+          <label>重量 (kg)</label>
+          <input type="number" id="logWeight" min="0" step="0.5" />
+        </div>
+        <div>
+          <label>組數</label>
+          <input type="number" id="logSets" min="1" step="1" value="1" />
+        </div>
+        <div>
+          <label>次數</label>
+          <input type="number" id="logReps" min="1" step="1" value="1" />
+        </div>
+      </div>
+      <div class="field-row">
+        <label>RPE(選填)</label>
+        <input type="number" id="logRpe" min="1" max="10" step="0.5" />
+      </div>
+      <div class="field-row">
+        <label>備註</label>
+        <input type="text" id="logNotes" placeholder="選填" />
+      </div>
+      <button class="btn-primary" id="addLogBtn">新增紀錄</button>
+    </section>
+
+    <section class="card">
+      <h2>歷史紀錄</h2>
+      <div class="table-wrap">
+        <table id="logTable">
+          <thead>
+            <tr><th>日期</th><th>動作</th><th>重量</th><th>組x次</th><th>RPE</th><th>備註</th><th></th></tr>
+          </thead>
+          <tbody id="logTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </section>
+
+  <!-- 進度 -->
+  <section class="tab-panel" id="panel-progress">
+    <section class="card">
+      <h2>估計 1RM 趨勢</h2>
+      <p class="note">依據訓練紀錄中每次的最佳一組,用 Epley 公式估算當天的 1RM 走勢。</p>
+      <div id="progressChart"></div>
+    </section>
+  </section>
+
+  <footer>資料只存在這台裝置的瀏覽器裡</footer>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
