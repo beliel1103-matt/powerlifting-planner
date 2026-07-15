@@ -44,7 +44,11 @@
         <select id="templateType">
           <option value="531">5/3/1(Wendler)</option>
           <option value="linear">線性週期化</option>
+          <option value="block">區塊週期化(Block)</option>
+          <option value="dup">每日波動式(DUP)</option>
+          <option value="conjugate">共軛法(Conjugate)</option>
         </select>
+        <p class="note">主項目會自動兩兩配對分配到不同訓練日(1-2 項/天),輔助動作在下方課表產生後可自行手動加入。</p>
       </div>
 
       <div class="field-row">
@@ -90,6 +94,196 @@
         </div>
         <div class="field-row checkbox-field">
           <label><input type="checkbox" id="linearDeload" checked /> 最後一週改為減量週</label>
+        </div>
+      </div>
+
+      <div id="configBlock" class="template-config" style="display:none;">
+        <p class="note" style="margin-top:0;">積累期(練量)→轉化期(練強度)→實現期(巔峰)三段依序銜接。</p>
+
+        <h4 class="block-subtitle">積累期(Accumulation)</h4>
+        <div class="field-row">
+          <label>週數</label>
+          <input type="number" id="blockAccWeeks" value="3" min="1" max="8" />
+        </div>
+        <div class="field-row">
+          <label>% 1RM(起→迄)</label>
+          <div class="inline-pair">
+            <input type="number" id="blockAccStartPct" value="65" min="30" max="100" />
+            <span>→</span>
+            <input type="number" id="blockAccEndPct" value="75" min="30" max="100" />
+          </div>
+        </div>
+        <div class="field-row">
+          <label>次數(起→迄)</label>
+          <div class="inline-pair">
+            <input type="number" id="blockAccStartReps" value="8" min="1" max="15" />
+            <span>→</span>
+            <input type="number" id="blockAccEndReps" value="6" min="1" max="15" />
+          </div>
+        </div>
+        <div class="field-row">
+          <label>組數</label>
+          <input type="number" id="blockAccSets" value="4" min="1" max="10" />
+        </div>
+
+        <h4 class="block-subtitle">轉化期(Intensification)</h4>
+        <div class="field-row">
+          <label>週數</label>
+          <input type="number" id="blockIntWeeks" value="3" min="1" max="8" />
+        </div>
+        <div class="field-row">
+          <label>% 1RM(起→迄)</label>
+          <div class="inline-pair">
+            <input type="number" id="blockIntStartPct" value="78" min="30" max="100" />
+            <span>→</span>
+            <input type="number" id="blockIntEndPct" value="88" min="30" max="100" />
+          </div>
+        </div>
+        <div class="field-row">
+          <label>次數(起→迄)</label>
+          <div class="inline-pair">
+            <input type="number" id="blockIntStartReps" value="5" min="1" max="15" />
+            <span>→</span>
+            <input type="number" id="blockIntEndReps" value="3" min="1" max="15" />
+          </div>
+        </div>
+        <div class="field-row">
+          <label>組數</label>
+          <input type="number" id="blockIntSets" value="4" min="1" max="10" />
+        </div>
+
+        <h4 class="block-subtitle">實現期(Realization / 巔峰)</h4>
+        <div class="field-row">
+          <label>週數</label>
+          <input type="number" id="blockRealWeeks" value="2" min="1" max="6" />
+        </div>
+        <div class="field-row">
+          <label>% 1RM(起→迄)</label>
+          <div class="inline-pair">
+            <input type="number" id="blockRealStartPct" value="90" min="30" max="103" />
+            <span>→</span>
+            <input type="number" id="blockRealEndPct" value="97" min="30" max="103" />
+          </div>
+        </div>
+        <div class="field-row">
+          <label>次數(起→迄)</label>
+          <div class="inline-pair">
+            <input type="number" id="blockRealStartReps" value="3" min="1" max="15" />
+            <span>→</span>
+            <input type="number" id="blockRealEndReps" value="1" min="1" max="15" />
+          </div>
+        </div>
+        <div class="field-row">
+          <label>組數</label>
+          <input type="number" id="blockRealSets" value="3" min="1" max="10" />
+        </div>
+      </div>
+
+      <div id="configDUP" class="template-config" style="display:none;">
+        <p class="note" style="margin-top:0;">同一週內每個主項目分組都會安排「重/中/輕」三種強度的訓練日,強度隨週數緩慢上升。</p>
+        <div class="field-row">
+          <label>總週數</label>
+          <input type="number" id="dupWeeks" value="4" min="1" max="10" />
+        </div>
+        <div class="field-row">
+          <label>每個訓練日組數</label>
+          <input type="number" id="dupSets" value="4" min="1" max="8" />
+        </div>
+
+        <h4 class="block-subtitle">重(Heavy)</h4>
+        <div class="field-row">
+          <label>% 1RM(起→迄)</label>
+          <div class="inline-pair">
+            <input type="number" id="dupHeavyStartPct" value="80" min="30" max="103" />
+            <span>→</span>
+            <input type="number" id="dupHeavyEndPct" value="90" min="30" max="103" />
+          </div>
+        </div>
+        <div class="field-row">
+          <label>次數(起→迄)</label>
+          <div class="inline-pair">
+            <input type="number" id="dupHeavyStartReps" value="5" min="1" max="15" />
+            <span>→</span>
+            <input type="number" id="dupHeavyEndReps" value="3" min="1" max="15" />
+          </div>
+        </div>
+
+        <h4 class="block-subtitle">中(Moderate)</h4>
+        <div class="field-row">
+          <label>% 1RM(起→迄)</label>
+          <div class="inline-pair">
+            <input type="number" id="dupModerateStartPct" value="70" min="30" max="103" />
+            <span>→</span>
+            <input type="number" id="dupModerateEndPct" value="78" min="30" max="103" />
+          </div>
+        </div>
+        <div class="field-row">
+          <label>次數(起→迄)</label>
+          <div class="inline-pair">
+            <input type="number" id="dupModerateStartReps" value="8" min="1" max="15" />
+            <span>→</span>
+            <input type="number" id="dupModerateEndReps" value="6" min="1" max="15" />
+          </div>
+        </div>
+
+        <h4 class="block-subtitle">輕(Light)</h4>
+        <div class="field-row">
+          <label>% 1RM(起→迄)</label>
+          <div class="inline-pair">
+            <input type="number" id="dupLightStartPct" value="60" min="30" max="103" />
+            <span>→</span>
+            <input type="number" id="dupLightEndPct" value="68" min="30" max="103" />
+          </div>
+        </div>
+        <div class="field-row">
+          <label>次數(起→迄)</label>
+          <div class="inline-pair">
+            <input type="number" id="dupLightStartReps" value="10" min="1" max="15" />
+            <span>→</span>
+            <input type="number" id="dupLightEndReps" value="8" min="1" max="15" />
+          </div>
+        </div>
+      </div>
+
+      <div id="configConjugate" class="template-config" style="display:none;">
+        <p class="note" style="margin-top:0;">
+          每週固定 ME(最大努力)/DE(速度)各兩天:下肢、上肢。ME 日刻意不排固定重量,
+          因為傳統共軛法會依當月要加強的弱點更換「變化動作」,實際重量當天自行漸進上重抓當日最高強度。
+        </p>
+        <div class="field-row">
+          <label>總週數</label>
+          <input type="number" id="conjugateWeeks" value="6" min="1" max="12" />
+        </div>
+
+        <div class="field-row">
+          <label>動作分類(下肢 / 上肢 / 不參與共軛法)</label>
+          <div class="checkbox-list" id="conjugateCategoryList"></div>
+        </div>
+
+        <div class="field-row">
+          <label>本月 ME 下肢變化動作與強化重點備註</label>
+          <input type="text" id="conjugateMELowerNote" placeholder="例如:箱式蹲舉 — 加強起始力量" />
+        </div>
+        <div class="field-row">
+          <label>本月 ME 上肢變化動作與強化重點備註</label>
+          <input type="text" id="conjugateMEUpperNote" placeholder="例如:窄握臥推 — 加強鎖定力量" />
+        </div>
+
+        <div class="field-row">
+          <label>DE 組數 / 次數</label>
+          <div class="inline-pair">
+            <input type="number" id="conjugateDESets" value="8" min="1" max="12" />
+            <span>×</span>
+            <input type="number" id="conjugateDEReps" value="3" min="1" max="6" />
+          </div>
+        </div>
+        <div class="field-row">
+          <label>DE 起始 % 1RM,每週遞增 %(3 週一循環)</label>
+          <div class="inline-pair">
+            <input type="number" id="conjugateDEStartPct" value="50" min="30" max="80" />
+            <span>+</span>
+            <input type="number" id="conjugateDEIncrement" value="5" min="0" max="15" />
+          </div>
         </div>
       </div>
 

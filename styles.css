@@ -238,6 +238,21 @@ button {
   margin-top: 4px;
 }
 
+.block-subtitle {
+  font-size: 0.85rem;
+  color: var(--accent);
+  margin: 16px 0 8px;
+}
+
+.block-subtitle:first-of-type { margin-top: 4px; }
+
+.main-lift-heading {
+  font-size: 0.8rem;
+  color: var(--text-soft);
+  font-weight: 600;
+  margin: 8px 0 2px;
+}
+
 .week-block {
   border: 1px solid var(--border);
   border-radius: 12px;

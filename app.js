@@ -118,14 +118,21 @@ document.getElementById("addLiftBtn").addEventListener("click", () => {
 
 // ---------- Program generator ----------
 const templateType = document.getElementById("templateType");
-const config531 = document.getElementById("config531");
-const configLinear = document.getElementById("configLinear");
+const configPanels = {
+  "531": document.getElementById("config531"),
+  linear: document.getElementById("configLinear"),
+  block: document.getElementById("configBlock"),
+  dup: document.getElementById("configDUP"),
+  conjugate: document.getElementById("configConjugate"),
+};
 const liftCheckboxes = document.getElementById("liftCheckboxes");
+const conjugateCategoryList = document.getElementById("conjugateCategoryList");
 const programView = document.getElementById("programView");
 
 templateType.addEventListener("change", () => {
-  config531.style.display = templateType.value === "531" ? "block" : "none";
-  configLinear.style.display = templateType.value === "linear" ? "block" : "none";
+  for (const [key, panel] of Object.entries(configPanels)) {
+    panel.style.display = key === templateType.value ? "block" : "none";
+  }
 });
 
 function renderLiftCheckboxes() {
@@ -133,7 +140,7 @@ function renderLiftCheckboxes() {
     [...liftCheckboxes.querySelectorAll("input:checked")].map((el) => el.value)
   );
   liftCheckboxes.innerHTML = "";
-  data.lifts.forEach((lift, i) => {
+  data.lifts.forEach((lift) => {
     const label = document.createElement("label");
     const cb = document.createElement("input");
     cb.type = "checkbox";
@@ -143,10 +150,48 @@ function renderLiftCheckboxes() {
     label.appendChild(document.createTextNode(lift.name));
     liftCheckboxes.appendChild(label);
   });
+  renderConjugateCategoryList();
+}
+
+function renderConjugateCategoryList() {
+  const prevValues = new Map(
+    [...conjugateCategoryList.querySelectorAll("select")].map((el) => [el.dataset.liftId, el.value])
+  );
+  conjugateCategoryList.innerHTML = "";
+  data.lifts.forEach((lift) => {
+    const label = document.createElement("label");
+    label.appendChild(document.createTextNode(lift.name + " "));
+    const select = document.createElement("select");
+    select.dataset.liftId = lift.id;
+    select.style.width = "auto";
+    select.style.padding = "2px 6px";
+    for (const [value, text] of [["lower", "下肢"], ["upper", "上肢"], ["none", "不參與"]]) {
+      const opt = document.createElement("option");
+      opt.value = value;
+      opt.textContent = text;
+      select.appendChild(opt);
+    }
+    select.value = prevValues.get(lift.id) || "none";
+    label.appendChild(select);
+    conjugateCategoryList.appendChild(label);
+  });
 }
 
 function selectedLiftIds() {
   return [...liftCheckboxes.querySelectorAll("input:checked")].map((el) => el.value);
+}
+
+// Pairs main lifts into 1-2-per-day training groups, evenly distributed.
+function groupLiftsPairs(lifts) {
+  const groups = [];
+  for (let i = 0; i < lifts.length; i += 2) {
+    groups.push(lifts.slice(i, i + 2));
+  }
+  return groups;
+}
+
+function mainLiftsFromGroup(group, computeSets) {
+  return group.map((lift) => ({ liftId: lift.id, liftName: lift.name, sets: computeSets(lift) }));
 }
 
 function generate531(lifts, cfg) {
@@ -156,20 +201,23 @@ function generate531(lifts, cfg) {
     { label: "第3週 · 1s week", percents: [75, 85, 95], reps: [5, 3, "1+"] },
     { label: "第4週 · 減量週", percents: [40, 50, 60], reps: [5, 5, 5] },
   ];
+  const groups = groupLiftsPairs(lifts);
   const weeks = [];
   let weekNumber = 1;
   for (let c = 0; c < cfg.cycles; c++) {
     for (const phase of phases) {
-      const days = lifts.map((lift) => {
-        const tm = lift.oneRM * (cfg.tmPercent / 100);
-        const sets = phase.percents.map((p, i) => ({
-          percent: p,
-          reps: phase.reps[i],
-          amrap: typeof phase.reps[i] === "string",
-          weight: roundToIncrement(tm * (p / 100), cfg.roundIncrement),
-        }));
-        return { liftId: lift.id, liftName: lift.name, sets, accessories: [] };
-      });
+      const days = groups.map((group) => ({
+        mainLifts: mainLiftsFromGroup(group, (lift) => {
+          const tm = lift.oneRM * (cfg.tmPercent / 100);
+          return phase.percents.map((p, i) => ({
+            percent: p,
+            reps: phase.reps[i],
+            amrap: typeof phase.reps[i] === "string",
+            weight: roundToIncrement(tm * (p / 100), cfg.roundIncrement),
+          }));
+        }),
+        accessories: [],
+      }));
       weeks.push({ weekNumber, phaseLabel: `${phase.label}(循環 ${c + 1})`, days });
       weekNumber++;
     }
@@ -177,35 +225,163 @@ function generate531(lifts, cfg) {
   return weeks;
 }
 
-function generateLinear(lifts, cfg) {
-  const hasDeload = cfg.deload;
-  const progressWeeks = hasDeload ? cfg.weeksCount - 1 : cfg.weeksCount;
+// Shared ramp generator: percent/reps interpolate linearly across `weeksCount` weeks.
+// Used directly by block periodization, and wrapped by linear periodization (with deload).
+function generateRampWeeks(lifts, cfg, weekNumberOffset, phaseLabelFn) {
+  const groups = groupLiftsPairs(lifts);
   const weeks = [];
-  for (let w = 0; w < progressWeeks; w++) {
-    const t = progressWeeks <= 1 ? 0 : w / (progressWeeks - 1);
+  for (let w = 0; w < cfg.weeksCount; w++) {
+    const t = cfg.weeksCount <= 1 ? 0 : w / (cfg.weeksCount - 1);
     const percent = cfg.startPct + (cfg.endPct - cfg.startPct) * t;
     const reps = Math.round(cfg.startReps + (cfg.endReps - cfg.startReps) * t);
-    const days = lifts.map((lift) => {
-      const weight = roundToIncrement(lift.oneRM * (percent / 100), cfg.roundIncrement);
-      const sets = Array.from({ length: cfg.setsCount }, () => ({
-        percent: Math.round(percent),
-        reps,
-        amrap: false,
-        weight,
-      }));
-      return { liftId: lift.id, liftName: lift.name, sets, accessories: [] };
-    });
-    weeks.push({ weekNumber: w + 1, phaseLabel: `第${w + 1}週`, days });
+    const days = groups.map((group) => ({
+      mainLifts: mainLiftsFromGroup(group, (lift) => {
+        const weight = roundToIncrement(lift.oneRM * (percent / 100), cfg.roundIncrement);
+        return Array.from({ length: cfg.setsCount }, () => ({
+          percent: Math.round(percent),
+          reps,
+          amrap: false,
+          weight,
+        }));
+      }),
+      accessories: [],
+    }));
+    weeks.push({ weekNumber: weekNumberOffset + w + 1, phaseLabel: phaseLabelFn(w), days });
   }
+  return weeks;
+}
+
+function generateLinear(lifts, cfg) {
+  const hasDeload = cfg.deload;
+  const progressWeeksCount = hasDeload ? cfg.weeksCount - 1 : cfg.weeksCount;
+  const weeks = generateRampWeeks(
+    lifts,
+    { ...cfg, weeksCount: progressWeeksCount },
+    0,
+    (w) => `第${w + 1}週`
+  );
   if (hasDeload) {
-    const days = lifts.map((lift) => {
-      const weight = roundToIncrement(lift.oneRM * 0.5, cfg.roundIncrement);
-      const sets = Array.from({ length: 3 }, () => ({ percent: 50, reps: 5, amrap: false, weight }));
-      return { liftId: lift.id, liftName: lift.name, sets, accessories: [] };
-    });
+    const groups = groupLiftsPairs(lifts);
+    const days = groups.map((group) => ({
+      mainLifts: mainLiftsFromGroup(group, (lift) => {
+        const weight = roundToIncrement(lift.oneRM * 0.5, cfg.roundIncrement);
+        return Array.from({ length: 3 }, () => ({ percent: 50, reps: 5, amrap: false, weight }));
+      }),
+      accessories: [],
+    }));
     weeks.push({ weekNumber: cfg.weeksCount, phaseLabel: `第${cfg.weeksCount}週 · 減量週`, days });
   }
   return weeks;
+}
+
+function generateBlock(lifts, cfg) {
+  let weekOffset = 0;
+  const acc = generateRampWeeks(lifts, cfg.acc, weekOffset, (w) => `積累期 · 第${w + 1}週`);
+  weekOffset += cfg.acc.weeksCount;
+  const int_ = generateRampWeeks(lifts, cfg.int, weekOffset, (w) => `轉化期 · 第${w + 1}週`);
+  weekOffset += cfg.int.weeksCount;
+  const real = generateRampWeeks(lifts, cfg.real, weekOffset, (w) => `實現期 · 第${w + 1}週`);
+  return [...acc, ...int_, ...real];
+}
+
+function generateDUP(lifts, cfg) {
+  const groups = groupLiftsPairs(lifts);
+  const dayTypes = [
+    { label: "重(Heavy)", ...cfg.heavy },
+    { label: "中(Moderate)", ...cfg.moderate },
+    { label: "輕(Light)", ...cfg.light },
+  ];
+  const weeks = [];
+  for (let w = 0; w < cfg.weeksCount; w++) {
+    const t = cfg.weeksCount <= 1 ? 0 : w / (cfg.weeksCount - 1);
+    const days = [];
+    for (const group of groups) {
+      for (const dt of dayTypes) {
+        const percent = dt.startPct + (dt.endPct - dt.startPct) * t;
+        const reps = Math.round(dt.startReps + (dt.endReps - dt.startReps) * t);
+        days.push({
+          sessionLabel: dt.label,
+          mainLifts: mainLiftsFromGroup(group, (lift) => {
+            const weight = roundToIncrement(lift.oneRM * (percent / 100), cfg.roundIncrement);
+            return Array.from({ length: cfg.setsCount }, () => ({
+              percent: Math.round(percent),
+              reps,
+              amrap: false,
+              weight,
+            }));
+          }),
+          accessories: [],
+        });
+      }
+    }
+    weeks.push({ weekNumber: w + 1, phaseLabel: `第${w + 1}週`, days });
+  }
+  return weeks;
+}
+
+function generateConjugate(lifts, cfg) {
+  const lowerLifts = lifts.filter((l) => cfg.categories.get(l.id) === "lower");
+  const upperLifts = lifts.filter((l) => cfg.categories.get(l.id) === "upper");
+  const weeks = [];
+  for (let w = 0; w < cfg.weeksCount; w++) {
+    const dePercent = cfg.deStartPct + cfg.deIncrement * (w % 3);
+    const days = [];
+    if (lowerLifts.length) {
+      days.push({
+        sessionLabel: "ME Lower",
+        mainLifts: mainLiftsFromGroup(lowerLifts, () => [{
+          instruction: cfg.meLowerNote
+            ? `${cfg.meLowerNote} — 漸進上重至當日最高強度單次(RPE 9-10)`
+            : "漸進上重至當日最高強度單次(RPE 9-10)",
+        }]),
+        accessories: [],
+      });
+      days.push({
+        sessionLabel: "DE Lower",
+        mainLifts: mainLiftsFromGroup(lowerLifts, (lift) => {
+          const weight = roundToIncrement(lift.oneRM * (dePercent / 100), cfg.roundIncrement);
+          return Array.from({ length: cfg.deSets }, () => ({
+            percent: dePercent,
+            reps: cfg.deReps,
+            amrap: false,
+            weight,
+          }));
+        }),
+        accessories: [],
+      });
+    }
+    if (upperLifts.length) {
+      days.push({
+        sessionLabel: "ME Upper",
+        mainLifts: mainLiftsFromGroup(upperLifts, () => [{
+          instruction: cfg.meUpperNote
+            ? `${cfg.meUpperNote} — 漸進上重至當日最高強度單次(RPE 9-10)`
+            : "漸進上重至當日最高強度單次(RPE 9-10)",
+        }]),
+        accessories: [],
+      });
+      days.push({
+        sessionLabel: "DE Upper",
+        mainLifts: mainLiftsFromGroup(upperLifts, (lift) => {
+          const weight = roundToIncrement(lift.oneRM * (dePercent / 100), cfg.roundIncrement);
+          return Array.from({ length: cfg.deSets }, () => ({
+            percent: dePercent,
+            reps: cfg.deReps,
+            amrap: false,
+            weight,
+          }));
+        }),
+        accessories: [],
+      });
+    }
+    weeks.push({ weekNumber: w + 1, phaseLabel: `第${w + 1}週(DE ${dePercent}%)`, days });
+  }
+  return weeks;
+}
+
+function numVal(id, fallback) {
+  const v = Number(document.getElementById(id).value);
+  return Number.isFinite(v) && document.getElementById(id).value !== "" ? v : fallback;
 }
 
 document.getElementById("generateBtn").addEventListener("click", () => {
@@ -215,25 +391,98 @@ document.getElementById("generateBtn").addEventListener("click", () => {
     alert("請至少選一個動作");
     return;
   }
-  const roundIncrement = Number(document.getElementById("roundIncrement").value) || 2.5;
+  const roundIncrement = numVal("roundIncrement", 2.5);
   let weeks;
   if (templateType.value === "531") {
     weeks = generate531(lifts, {
-      tmPercent: Number(document.getElementById("tmPercent").value) || 90,
-      cycles: Number(document.getElementById("cycles531").value) || 1,
+      tmPercent: numVal("tmPercent", 90),
+      cycles: numVal("cycles531", 1),
       roundIncrement,
     });
-  } else {
+  } else if (templateType.value === "linear") {
     weeks = generateLinear(lifts, {
-      weeksCount: Number(document.getElementById("linearWeeks").value) || 5,
-      startPct: Number(document.getElementById("linearStartPct").value) || 70,
-      endPct: Number(document.getElementById("linearEndPct").value) || 90,
-      startReps: Number(document.getElementById("linearStartReps").value) || 5,
-      endReps: Number(document.getElementById("linearEndReps").value) || 2,
-      setsCount: Number(document.getElementById("linearSets").value) || 5,
+      weeksCount: numVal("linearWeeks", 5),
+      startPct: numVal("linearStartPct", 70),
+      endPct: numVal("linearEndPct", 90),
+      startReps: numVal("linearStartReps", 5),
+      endReps: numVal("linearEndReps", 2),
+      setsCount: numVal("linearSets", 5),
       deload: document.getElementById("linearDeload").checked,
       roundIncrement,
     });
+  } else if (templateType.value === "block") {
+    weeks = generateBlock(lifts, {
+      acc: {
+        weeksCount: numVal("blockAccWeeks", 3),
+        startPct: numVal("blockAccStartPct", 65),
+        endPct: numVal("blockAccEndPct", 75),
+        startReps: numVal("blockAccStartReps", 8),
+        endReps: numVal("blockAccEndReps", 6),
+        setsCount: numVal("blockAccSets", 4),
+        roundIncrement,
+      },
+      int: {
+        weeksCount: numVal("blockIntWeeks", 3),
+        startPct: numVal("blockIntStartPct", 78),
+        endPct: numVal("blockIntEndPct", 88),
+        startReps: numVal("blockIntStartReps", 5),
+        endReps: numVal("blockIntEndReps", 3),
+        setsCount: numVal("blockIntSets", 4),
+        roundIncrement,
+      },
+      real: {
+        weeksCount: numVal("blockRealWeeks", 2),
+        startPct: numVal("blockRealStartPct", 90),
+        endPct: numVal("blockRealEndPct", 97),
+        startReps: numVal("blockRealStartReps", 3),
+        endReps: numVal("blockRealEndReps", 1),
+        setsCount: numVal("blockRealSets", 3),
+        roundIncrement,
+      },
+    });
+  } else if (templateType.value === "dup") {
+    weeks = generateDUP(lifts, {
+      weeksCount: numVal("dupWeeks", 4),
+      setsCount: numVal("dupSets", 4),
+      roundIncrement,
+      heavy: {
+        startPct: numVal("dupHeavyStartPct", 80),
+        endPct: numVal("dupHeavyEndPct", 90),
+        startReps: numVal("dupHeavyStartReps", 5),
+        endReps: numVal("dupHeavyEndReps", 3),
+      },
+      moderate: {
+        startPct: numVal("dupModerateStartPct", 70),
+        endPct: numVal("dupModerateEndPct", 78),
+        startReps: numVal("dupModerateStartReps", 8),
+        endReps: numVal("dupModerateEndReps", 6),
+      },
+      light: {
+        startPct: numVal("dupLightStartPct", 60),
+        endPct: numVal("dupLightEndPct", 68),
+        startReps: numVal("dupLightStartReps", 10),
+        endReps: numVal("dupLightEndReps", 8),
+      },
+    });
+  } else if (templateType.value === "conjugate") {
+    const categories = new Map(
+      [...conjugateCategoryList.querySelectorAll("select")].map((el) => [el.dataset.liftId, el.value])
+    );
+    weeks = generateConjugate(lifts, {
+      weeksCount: numVal("conjugateWeeks", 6),
+      categories,
+      meLowerNote: document.getElementById("conjugateMELowerNote").value.trim(),
+      meUpperNote: document.getElementById("conjugateMEUpperNote").value.trim(),
+      deSets: numVal("conjugateDESets", 8),
+      deReps: numVal("conjugateDEReps", 3),
+      deStartPct: numVal("conjugateDEStartPct", 50),
+      deIncrement: numVal("conjugateDEIncrement", 5),
+      roundIncrement,
+    });
+    if (weeks.every((w) => w.days.length === 0)) {
+      alert("共軛法需要至少把一個動作分類為「下肢」或「上肢」");
+      return;
+    }
   }
   data.program = { templateType: templateType.value, generatedAt: todayStr(), weeks };
   saveData();
@@ -261,15 +510,27 @@ function renderProgram() {
       const db = document.createElement("div");
       db.className = "day-block";
       const h4 = document.createElement("h4");
-      h4.textContent = day.liftName;
+      const liftNames = day.mainLifts.map((m) => m.liftName).join(" + ");
+      h4.textContent = day.sessionLabel ? `${day.sessionLabel} · ${liftNames}` : liftNames;
       db.appendChild(h4);
 
-      day.sets.forEach((s, i) => {
-        const row = document.createElement("div");
-        row.className = "set-row";
-        row.textContent = `第${i + 1}組 · ${s.weight}kg × ${formatReps(s.reps, s.amrap)}${s.percent ? `(${s.percent}%)` : ""}`;
-        db.appendChild(row);
-      });
+      const showSubHeading = day.mainLifts.length > 1;
+      for (const main of day.mainLifts) {
+        if (showSubHeading) {
+          const subHeading = document.createElement("div");
+          subHeading.className = "main-lift-heading";
+          subHeading.textContent = main.liftName;
+          db.appendChild(subHeading);
+        }
+        main.sets.forEach((s, i) => {
+          const row = document.createElement("div");
+          row.className = "set-row";
+          row.textContent = s.instruction
+            ? `第${i + 1}組 · ${s.instruction}`
+            : `第${i + 1}組 · ${s.weight}kg × ${formatReps(s.reps, s.amrap)}${s.percent ? `(${s.percent}%)` : ""}`;
+          db.appendChild(row);
+        });
+      }
 
       const accList = document.createElement("div");
       accList.className = "accessory-list";
