@@ -9,7 +9,7 @@ function defaultData() {
     lifts: [
       { id: uid(), name: "蹲舉", oneRM: 100 },
       { id: uid(), name: "臥推", oneRM: 70 },
-      { id: uid(), name: "硬拉", oneRM: 120 },
+      { id: uid(), name: "硬舉", oneRM: 120 },
     ],
     program: null,
     logs: [],
@@ -452,7 +452,7 @@ function insertDeloads(weeks, deloadCfg, lifts) {
 const LIFT_WEEKLY_SETS = {
   "蹲舉": { hypertrophy: 14, strength: 9, peaking: 6 },
   "臥推": { hypertrophy: 17, strength: 11, peaking: 8.5 },
-  "硬拉": { hypertrophy: 11, strength: 7, peaking: 4.5 },
+  "硬舉": { hypertrophy: 11, strength: 7, peaking: 4.5 },
 };
 
 function standardWeeklySets(liftName, phase) {
