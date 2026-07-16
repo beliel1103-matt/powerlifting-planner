@@ -122,6 +122,7 @@ const configPanels = {
   "531": document.getElementById("config531"),
   linear: document.getElementById("configLinear"),
   block: document.getElementById("configBlock"),
+  advancedBlock: document.getElementById("configAdvancedBlock"),
   dup: document.getElementById("configDUP"),
   conjugate: document.getElementById("configConjugate"),
 };
@@ -133,6 +134,11 @@ const blockPeakDate = document.getElementById("blockPeakDate");
 const peakDateRow = document.getElementById("peakDateRow");
 const peakDateSummary = document.getElementById("peakDateSummary");
 const blockWeekInputIds = ["blockAccWeeks", "blockIntWeeks", "blockRealWeeks"];
+const advBlockUsePeakDate = document.getElementById("advBlockUsePeakDate");
+const advBlockPeakDate = document.getElementById("advBlockPeakDate");
+const advPeakDateRow = document.getElementById("advPeakDateRow");
+const advPeakDateSummary = document.getElementById("advPeakDateSummary");
+const advBlockWeekInputIds = ["advBlockAccWeeks", "advBlockIntWeeks"];
 
 templateType.addEventListener("change", () => {
   for (const [key, panel] of Object.entries(configPanels)) {
@@ -162,6 +168,39 @@ blockUsePeakDate.addEventListener("change", () => {
 
 blockPeakDate.addEventListener("change", () => {
   if (blockUsePeakDate.checked) recalcPeakDateSplit();
+});
+
+// Advanced Block: accumulation capped at 4 weeks, remainder goes to the combined
+// intensification+realization-touch phase (that phase is the bulk of the program).
+function splitAdvBlockWeeks(remaining) {
+  if (remaining <= 0) return { acc: 0, combined: 0 };
+  if (remaining === 1) return { acc: 0, combined: 1 };
+  let acc = Math.min(4, Math.round(remaining * 0.3));
+  acc = Math.min(acc, remaining - 1);
+  return { acc, combined: remaining - acc };
+}
+
+function recalcAdvPeakDateSplit() {
+  if (!advBlockPeakDate.value) {
+    advPeakDateSummary.textContent = "";
+    return;
+  }
+  const total = weeksUntil(advBlockPeakDate.value);
+  const { acc, combined } = splitAdvBlockWeeks(total - 1);
+  document.getElementById("advBlockAccWeeks").value = acc;
+  document.getElementById("advBlockIntWeeks").value = combined;
+  advPeakDateSummary.textContent =
+    `距離巔峰測試日約 ${total} 週:積累 ${acc} 週 · 轉化＋實現 ${combined} 週 · 巔峰測試週 1 週`;
+}
+
+advBlockUsePeakDate.addEventListener("change", () => {
+  advPeakDateRow.style.display = advBlockUsePeakDate.checked ? "block" : "none";
+  for (const id of advBlockWeekInputIds) document.getElementById(id).disabled = advBlockUsePeakDate.checked;
+  if (advBlockUsePeakDate.checked) recalcAdvPeakDateSplit();
+});
+
+advBlockPeakDate.addEventListener("change", () => {
+  if (advBlockUsePeakDate.checked) recalcAdvPeakDateSplit();
 });
 
 function renderLiftCheckboxes() {
@@ -342,6 +381,99 @@ function generateBlock(lifts, cfg) {
   const weeks = [...acc, ...int_, ...real];
   if (cfg.peakWeek) {
     weeks.push(generatePeakWeek(lifts, cfg.peakWeek, weekOffset + 1));
+  }
+  return weeks;
+}
+
+// Advanced Block: accumulation (capped 4 weeks) into a single long intensification
+// phase that periodically "touches" realization-level intensity every 2-3 weeks,
+// instead of saving all the intensity for one block at the end (conjugate-style
+// frequent exposure to near-max rather than a single late peak).
+// Shared week-progression math for the three modes:
+// "load" (a): reps/sets fixed at the start values, weight climbs additively (weeklyKg/week).
+// "volume" (b): % 1RM fixed at startPct, reps and/or sets ramp start->end.
+// "both" (c): % 1RM, reps, and sets all ramp start->end.
+function progressionValues(w, weeksCount, cfg) {
+  if (cfg.progression === "load") {
+    return { percent: null, reps: cfg.startReps, setsCount: Math.round(cfg.startSets) };
+  }
+  const t = weeksCount <= 1 ? 0 : w / (weeksCount - 1);
+  const percent = cfg.progression === "volume" ? cfg.startPct : cfg.startPct + (cfg.endPct - cfg.startPct) * t;
+  const reps = Math.round(cfg.startReps + (cfg.endReps - cfg.startReps) * t);
+  const setsCount = Math.round(cfg.startSets + (cfg.endSets - cfg.startSets) * t);
+  return { percent, reps, setsCount };
+}
+
+function generateAdvancedBlock(lifts, cfg) {
+  const accWeeksCount = Math.min(4, cfg.acc.weeksCount);
+  const groups = groupLiftsPairs(lifts);
+  const weeks = [];
+  let weekNumber = 1;
+
+  for (let w = 0; w < accWeeksCount; w++) {
+    const { percent, reps, setsCount } = progressionValues(w, accWeeksCount, cfg.acc);
+    const days = groups.map((group) => ({
+      mainLifts: mainLiftsFromGroup(group, (lift) => {
+        const weight = cfg.acc.progression === "load"
+          ? roundToIncrement(lift.oneRM * (cfg.acc.startPct / 100) + w * cfg.acc.weeklyKg, cfg.acc.roundIncrement)
+          : roundToIncrement(lift.oneRM * (percent / 100), cfg.acc.roundIncrement);
+        return Array.from({ length: setsCount }, () => ({
+          percent: percent !== null ? Math.round(percent) : null,
+          reps,
+          amrap: false,
+          weight,
+        }));
+      }),
+      accessories: [],
+    }));
+    weeks.push({ weekNumber, phaseLabel: `積累期 · 第${w + 1}週`, days });
+    weekNumber++;
+  }
+
+  const totalTouches = Math.floor(cfg.combined.totalWeeks / cfg.combined.touchEvery);
+  let touchIndex = 0;
+  for (let w = 0; w < cfg.combined.totalWeeks; w++) {
+    const isTouch = (w + 1) % cfg.combined.touchEvery === 0;
+    let percent, reps, setsCount, label;
+    if (isTouch) {
+      const t = totalTouches <= 1 ? 1 : touchIndex / (totalTouches - 1);
+      percent = cfg.combined.realStartPct + (cfg.combined.realEndPct - cfg.combined.realStartPct) * t;
+      reps = Math.round(cfg.combined.realStartReps + (cfg.combined.realEndReps - cfg.combined.realStartReps) * t);
+      setsCount = cfg.combined.realSets;
+      label = `轉化期 · 第${w + 1}週(觸及實現期強度)`;
+      touchIndex++;
+    } else {
+      ({ percent, reps, setsCount } = progressionValues(w, cfg.combined.totalWeeks, {
+        progression: cfg.combined.intProgression,
+        startPct: cfg.combined.intStartPct,
+        endPct: cfg.combined.intEndPct,
+        startReps: cfg.combined.intStartReps,
+        endReps: cfg.combined.intEndReps,
+        startSets: cfg.combined.intStartSets,
+        endSets: cfg.combined.intEndSets,
+      }));
+      label = `轉化期 · 第${w + 1}週`;
+    }
+    const days = groups.map((group) => ({
+      mainLifts: mainLiftsFromGroup(group, (lift) => {
+        const weight = (!isTouch && cfg.combined.intProgression === "load")
+          ? roundToIncrement(lift.oneRM * (cfg.combined.intStartPct / 100) + w * cfg.combined.intWeeklyKg, cfg.combined.roundIncrement)
+          : roundToIncrement(lift.oneRM * (percent / 100), cfg.combined.roundIncrement);
+        return Array.from({ length: setsCount }, () => ({
+          percent: percent !== null ? Math.round(percent) : null,
+          reps,
+          amrap: false,
+          weight,
+        }));
+      }),
+      accessories: [],
+    }));
+    weeks.push({ weekNumber, phaseLabel: label, days });
+    weekNumber++;
+  }
+
+  if (cfg.peakWeek) {
+    weeks.push(generatePeakWeek(lifts, cfg.peakWeek, weekNumber));
   }
   return weeks;
 }
@@ -529,6 +661,42 @@ document.getElementById("generateBtn").addEventListener("click", () => {
       },
       peakWeek: document.getElementById("blockIncludePeakWeek").checked
         ? { roundIncrement, peakDate: document.getElementById("blockUsePeakDate").checked ? document.getElementById("blockPeakDate").value : null }
+        : null,
+    });
+  } else if (templateType.value === "advancedBlock") {
+    weeks = generateAdvancedBlock(lifts, {
+      acc: {
+        weeksCount: Math.min(4, numVal("advBlockAccWeeks", 3)),
+        progression: document.getElementById("advBlockAccProgression").value,
+        weeklyKg: numVal("advBlockAccWeeklyKg", 2.5),
+        startPct: Math.max(60, numVal("advBlockAccStartPct", 65)),
+        endPct: Math.max(60, numVal("advBlockAccEndPct", 75)),
+        startReps: numVal("advBlockAccStartReps", 8),
+        endReps: numVal("advBlockAccEndReps", 6),
+        startSets: numVal("advBlockAccStartSets", 4),
+        endSets: numVal("advBlockAccEndSets", 4),
+        roundIncrement,
+      },
+      combined: {
+        totalWeeks: numVal("advBlockIntWeeks", 8),
+        touchEvery: numVal("advBlockTouchEvery", 3),
+        intProgression: document.getElementById("advBlockIntProgression").value,
+        intWeeklyKg: numVal("advBlockIntWeeklyKg", 2.5),
+        intStartPct: Math.max(75, numVal("advBlockIntStartPct", 78)),
+        intEndPct: Math.max(75, numVal("advBlockIntEndPct", 88)),
+        intStartReps: numVal("advBlockIntStartReps", 5),
+        intEndReps: numVal("advBlockIntEndReps", 3),
+        intStartSets: numVal("advBlockIntStartSets", 4),
+        intEndSets: numVal("advBlockIntEndSets", 4),
+        realStartPct: Math.max(85, numVal("advBlockRealStartPct", 90)),
+        realEndPct: Math.max(85, numVal("advBlockRealEndPct", 97)),
+        realStartReps: numVal("advBlockRealStartReps", 3),
+        realEndReps: numVal("advBlockRealEndReps", 1),
+        realSets: numVal("advBlockRealSets", 3),
+        roundIncrement,
+      },
+      peakWeek: document.getElementById("advBlockIncludePeakWeek").checked
+        ? { roundIncrement, peakDate: advBlockUsePeakDate.checked ? advBlockPeakDate.value : null }
         : null,
     });
   } else if (templateType.value === "dup") {

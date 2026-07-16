@@ -45,6 +45,7 @@
           <option value="531">5/3/1(Wendler)</option>
           <option value="linear">線性週期化</option>
           <option value="block">區塊週期化(Block)</option>
+          <option value="advancedBlock">進階區塊(Advanced Block)</option>
           <option value="dup">每日波動式(DUP)</option>
           <option value="conjugate">共軛法(Conjugate)</option>
         </select>
@@ -190,6 +191,145 @@
         <h4 class="block-subtitle">巔峰測試週(Peak / Test week)</h4>
         <div class="field-row checkbox-field">
           <label><input type="checkbox" id="blockIncludePeakWeek" checked /> 在最後加一個巔峰測試週(熱身遞增 + 3 次試舉)</label>
+        </div>
+        <p class="note">3 次試舉是以「目前輸入的 1RM」推算:第一次 92%(開把,求穩)、第二次 97%、第三次 102%(挑戰新紀錄)。訓練過程中如果表現超乎預期,記得回最大重量分頁手動調高 1RM 再重新產生課表。</p>
+      </div>
+
+      <div id="configAdvancedBlock" class="template-config" style="display:none;">
+        <p class="note" style="margin-top:0;">
+          自訂版區塊週期化:積累期最多 4 週,主要時間放在轉化期,並每 2-3 週安插一次
+          實現期強度的「觸及」訓練日,持續逼近高強度而不是留到最後才一次拉高——
+          精神上比較接近共軛法。最後再接一個巔峰測試週。這個模型會持續依你的想法調整。
+        </p>
+
+        <div class="field-row checkbox-field">
+          <label><input type="checkbox" id="advBlockUsePeakDate" /> 依巔峰測試日,自動計算各期週數</label>
+        </div>
+        <div class="field-row" id="advPeakDateRow" style="display:none;">
+          <label>巔峰測試日(模擬測驗或正式比賽日期)</label>
+          <input type="date" id="advBlockPeakDate" />
+          <p class="note" id="advPeakDateSummary"></p>
+        </div>
+
+        <h4 class="block-subtitle">積累期 · 肌肥大期(Hypertrophy,最多 4 週)</h4>
+        <p class="note" style="margin-top:0;">注重超載與訓練量,強度建議 &gt;60% 1RM。</p>
+        <div class="field-row">
+          <label>週數(2-4)</label>
+          <input type="number" id="advBlockAccWeeks" value="3" min="1" max="4" />
+        </div>
+        <div class="field-row">
+          <label>漸進方式</label>
+          <select id="advBlockAccProgression">
+            <option value="load">(a)組次維持,強度每週增加(超負荷提升訓練量)</option>
+            <option value="volume">(b)強度維持,每週提升組或次</option>
+            <option value="both" selected>(c)強度與組次皆逐週增加</option>
+          </select>
+        </div>
+        <div class="field-row">
+          <label>每週增加重量(kg,僅「組次維持」模式使用,建議 2.5~4.5,約當 5-10 磅)</label>
+          <input type="number" id="advBlockAccWeeklyKg" value="2.5" min="1" max="10" step="0.5" />
+        </div>
+        <div class="field-row">
+          <label>% 1RM(起→迄,建議 &gt;60%;「組次維持」模式只用起始值)</label>
+          <div class="inline-pair">
+            <input type="number" id="advBlockAccStartPct" value="65" min="60" max="100" />
+            <span>→</span>
+            <input type="number" id="advBlockAccEndPct" value="75" min="60" max="100" />
+          </div>
+        </div>
+        <div class="field-row">
+          <label>次數(起→迄;「組次維持」模式只用起始值)</label>
+          <div class="inline-pair">
+            <input type="number" id="advBlockAccStartReps" value="8" min="1" max="15" />
+            <span>→</span>
+            <input type="number" id="advBlockAccEndReps" value="6" min="1" max="15" />
+          </div>
+        </div>
+        <div class="field-row">
+          <label>組數(起→迄;「組次維持」模式只用起始值)</label>
+          <div class="inline-pair">
+            <input type="number" id="advBlockAccStartSets" value="4" min="1" max="10" />
+            <span>→</span>
+            <input type="number" id="advBlockAccEndSets" value="4" min="1" max="10" />
+          </div>
+        </div>
+
+        <h4 class="block-subtitle">轉化期 · 肌力期(Strength,課表主體)</h4>
+        <p class="note" style="margin-top:0;">注重強度超載,強度建議 &gt;75% 1RM。</p>
+        <div class="field-row">
+          <label>轉化＋實現總週數</label>
+          <input type="number" id="advBlockIntWeeks" value="8" min="2" max="20" />
+        </div>
+        <div class="field-row">
+          <label>每幾週觸及一次實現期強度</label>
+          <select id="advBlockTouchEvery">
+            <option value="2">每 2 週</option>
+            <option value="3" selected>每 3 週</option>
+          </select>
+        </div>
+        <div class="field-row">
+          <label>漸進方式(轉化期基礎週,不含觸及週)</label>
+          <select id="advBlockIntProgression">
+            <option value="load" selected>(a)維持訓練量,強度每週增加</option>
+            <option value="volume">(b)量不大幅變動,可調整組或次</option>
+            <option value="both">強度與組次皆逐週增加</option>
+          </select>
+        </div>
+        <div class="field-row">
+          <label>每週增加重量(kg,僅「維持訓練量」模式使用)</label>
+          <input type="number" id="advBlockIntWeeklyKg" value="2.5" min="1" max="10" step="0.5" />
+        </div>
+        <div class="field-row">
+          <label>轉化期基礎 % 1RM(起→迄,建議 &gt;75%;「維持訓練量」模式只用起始值)</label>
+          <div class="inline-pair">
+            <input type="number" id="advBlockIntStartPct" value="78" min="75" max="103" />
+            <span>→</span>
+            <input type="number" id="advBlockIntEndPct" value="88" min="75" max="103" />
+          </div>
+        </div>
+        <div class="field-row">
+          <label>轉化期次數(起→迄)</label>
+          <div class="inline-pair">
+            <input type="number" id="advBlockIntStartReps" value="5" min="1" max="15" />
+            <span>→</span>
+            <input type="number" id="advBlockIntEndReps" value="3" min="1" max="15" />
+          </div>
+        </div>
+        <div class="field-row">
+          <label>轉化期組數(起→迄)</label>
+          <div class="inline-pair">
+            <input type="number" id="advBlockIntStartSets" value="4" min="1" max="10" />
+            <span>→</span>
+            <input type="number" id="advBlockIntEndSets" value="4" min="1" max="10" />
+          </div>
+        </div>
+
+        <h4 class="block-subtitle">實現期 · 巔峰期(Peaking)觸及強度(每次觸及時使用)</h4>
+        <p class="note" style="margin-top:0;">巔峰期超載,強度建議 &gt;85% 1RM,逐步接近 1RM。</p>
+        <div class="field-row">
+          <label>% 1RM(第一次觸及→最後一次觸及,建議 &gt;85%)</label>
+          <div class="inline-pair">
+            <input type="number" id="advBlockRealStartPct" value="90" min="85" max="103" />
+            <span>→</span>
+            <input type="number" id="advBlockRealEndPct" value="97" min="85" max="103" />
+          </div>
+        </div>
+        <div class="field-row">
+          <label>次數(第一次觸及→最後一次觸及)</label>
+          <div class="inline-pair">
+            <input type="number" id="advBlockRealStartReps" value="3" min="1" max="15" />
+            <span>→</span>
+            <input type="number" id="advBlockRealEndReps" value="1" min="1" max="15" />
+          </div>
+        </div>
+        <div class="field-row">
+          <label>組數</label>
+          <input type="number" id="advBlockRealSets" value="3" min="1" max="10" />
+        </div>
+
+        <h4 class="block-subtitle">巔峰測試週(Peak / Test week)</h4>
+        <div class="field-row checkbox-field">
+          <label><input type="checkbox" id="advBlockIncludePeakWeek" checked /> 在最後加一個巔峰測試週(熱身遞增 + 3 次試舉)</label>
         </div>
         <p class="note">3 次試舉是以「目前輸入的 1RM」推算:第一次 92%(開把,求穩)、第二次 97%、第三次 102%(挑戰新紀錄)。訓練過程中如果表現超乎預期,記得回最大重量分頁手動調高 1RM 再重新產生課表。</p>
       </div>
