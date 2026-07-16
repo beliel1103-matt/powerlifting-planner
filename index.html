@@ -98,7 +98,16 @@
       </div>
 
       <div id="configBlock" class="template-config" style="display:none;">
-        <p class="note" style="margin-top:0;">積累期(練量)→轉化期(練強度)→實現期(巔峰)三段依序銜接。</p>
+        <p class="note" style="margin-top:0;">積累期(練量)→轉化期(練強度)→實現期(巔峰)三段依序銜接,最後再接一個巔峰測試週。</p>
+
+        <div class="field-row checkbox-field">
+          <label><input type="checkbox" id="blockUsePeakDate" /> 依巔峰測試日,自動計算各期週數</label>
+        </div>
+        <div class="field-row" id="peakDateRow" style="display:none;">
+          <label>巔峰測試日(模擬測驗或正式比賽日期)</label>
+          <input type="date" id="blockPeakDate" />
+          <p class="note" id="peakDateSummary"></p>
+        </div>
 
         <h4 class="block-subtitle">積累期(Accumulation)</h4>
         <div class="field-row">
@@ -177,6 +186,12 @@
           <label>組數</label>
           <input type="number" id="blockRealSets" value="3" min="1" max="10" />
         </div>
+
+        <h4 class="block-subtitle">巔峰測試週(Peak / Test week)</h4>
+        <div class="field-row checkbox-field">
+          <label><input type="checkbox" id="blockIncludePeakWeek" checked /> 在最後加一個巔峰測試週(熱身遞增 + 3 次試舉)</label>
+        </div>
+        <p class="note">3 次試舉是以「目前輸入的 1RM」推算:第一次 92%(開把,求穩)、第二次 97%、第三次 102%(挑戰新紀錄)。訓練過程中如果表現超乎預期,記得回最大重量分頁手動調高 1RM 再重新產生課表。</p>
       </div>
 
       <div id="configDUP" class="template-config" style="display:none;">

@@ -128,11 +128,40 @@ const configPanels = {
 const liftCheckboxes = document.getElementById("liftCheckboxes");
 const conjugateCategoryList = document.getElementById("conjugateCategoryList");
 const programView = document.getElementById("programView");
+const blockUsePeakDate = document.getElementById("blockUsePeakDate");
+const blockPeakDate = document.getElementById("blockPeakDate");
+const peakDateRow = document.getElementById("peakDateRow");
+const peakDateSummary = document.getElementById("peakDateSummary");
+const blockWeekInputIds = ["blockAccWeeks", "blockIntWeeks", "blockRealWeeks"];
 
 templateType.addEventListener("change", () => {
   for (const [key, panel] of Object.entries(configPanels)) {
     panel.style.display = key === templateType.value ? "block" : "none";
   }
+});
+
+function recalcPeakDateSplit() {
+  if (!blockPeakDate.value) {
+    peakDateSummary.textContent = "";
+    return;
+  }
+  const total = weeksUntil(blockPeakDate.value);
+  const { acc, int: int_, real } = splitBlockWeeks(total - 1);
+  document.getElementById("blockAccWeeks").value = acc;
+  document.getElementById("blockIntWeeks").value = int_;
+  document.getElementById("blockRealWeeks").value = real;
+  peakDateSummary.textContent =
+    `距離巔峰測試日約 ${total} 週:積累 ${acc} 週 · 轉化 ${int_} 週 · 實現 ${real} 週 · 巔峰測試週 1 週`;
+}
+
+blockUsePeakDate.addEventListener("change", () => {
+  peakDateRow.style.display = blockUsePeakDate.checked ? "block" : "none";
+  for (const id of blockWeekInputIds) document.getElementById(id).disabled = blockUsePeakDate.checked;
+  if (blockUsePeakDate.checked) recalcPeakDateSplit();
+});
+
+blockPeakDate.addEventListener("change", () => {
+  if (blockUsePeakDate.checked) recalcPeakDateSplit();
 });
 
 function renderLiftCheckboxes() {
@@ -274,14 +303,73 @@ function generateLinear(lifts, cfg) {
   return weeks;
 }
 
+// A single taper + 3-attempt "meet day" week, based on the current 1RM entered in Setup.
+function generatePeakWeek(lifts, cfg, weekNumber) {
+  const groups = groupLiftsPairs(lifts);
+  const ramp = [
+    { percent: 50, reps: 3, warmup: true },
+    { percent: 70, reps: 2, warmup: true },
+    { percent: 85, reps: 1, warmup: true },
+    { percent: 92, reps: 1, attemptLabel: "第一次試舉(Opener)" },
+    { percent: 97, reps: 1, attemptLabel: "第二次試舉" },
+    { percent: 102, reps: 1, attemptLabel: "第三次試舉(挑戰新紀錄)" },
+  ];
+  const days = groups.map((group) => ({
+    mainLifts: mainLiftsFromGroup(group, (lift) =>
+      ramp.map((r) => ({
+        percent: r.percent,
+        reps: r.reps,
+        amrap: false,
+        warmup: r.warmup || false,
+        attemptLabel: r.attemptLabel || null,
+        weight: roundToIncrement(lift.oneRM * (r.percent / 100), cfg.roundIncrement),
+      }))
+    ),
+    accessories: [],
+  }));
+  const dateLabel = cfg.peakDate ? ` · ${cfg.peakDate}` : "";
+  return { weekNumber, phaseLabel: `巔峰測試週${dateLabel}`, days };
+}
+
 function generateBlock(lifts, cfg) {
   let weekOffset = 0;
-  const acc = generateRampWeeks(lifts, cfg.acc, weekOffset, (w) => `積累期 · 第${w + 1}週`);
+  const acc = cfg.acc.weeksCount > 0 ? generateRampWeeks(lifts, cfg.acc, weekOffset, (w) => `積累期 · 第${w + 1}週`) : [];
   weekOffset += cfg.acc.weeksCount;
-  const int_ = generateRampWeeks(lifts, cfg.int, weekOffset, (w) => `轉化期 · 第${w + 1}週`);
+  const int_ = cfg.int.weeksCount > 0 ? generateRampWeeks(lifts, cfg.int, weekOffset, (w) => `轉化期 · 第${w + 1}週`) : [];
   weekOffset += cfg.int.weeksCount;
-  const real = generateRampWeeks(lifts, cfg.real, weekOffset, (w) => `實現期 · 第${w + 1}週`);
-  return [...acc, ...int_, ...real];
+  const real = cfg.real.weeksCount > 0 ? generateRampWeeks(lifts, cfg.real, weekOffset, (w) => `實現期 · 第${w + 1}週`) : [];
+  weekOffset += cfg.real.weeksCount;
+  const weeks = [...acc, ...int_, ...real];
+  if (cfg.peakWeek) {
+    weeks.push(generatePeakWeek(lifts, cfg.peakWeek, weekOffset + 1));
+  }
+  return weeks;
+}
+
+// Weeks remaining until a target date (rounded to the nearest whole week, minimum 1).
+function weeksUntil(dateStr) {
+  const target = new Date(dateStr);
+  const today = new Date(todayStr());
+  const diffDays = (target - today) / (24 * 60 * 60 * 1000);
+  return Math.max(1, Math.round(diffDays / 7));
+}
+
+// Splits the weeks available before the peak week across Acc/Int/Real (~40/35/25%),
+// prioritizing the later (higher-intensity) phases when time is short.
+function splitBlockWeeks(remaining) {
+  if (remaining <= 0) return { acc: 0, int: 0, real: 0 };
+  if (remaining === 1) return { acc: 0, int: 0, real: 1 };
+  if (remaining === 2) return { acc: 0, int: 1, real: 1 };
+  let acc = Math.max(1, Math.round(remaining * 0.4));
+  let int_ = Math.max(1, Math.round(remaining * 0.35));
+  let real = remaining - acc - int_;
+  if (real < 1) {
+    const deficit = 1 - real;
+    if (acc - deficit >= 1) acc -= deficit;
+    else int_ -= deficit;
+    real = 1;
+  }
+  return { acc, int: int_, real };
 }
 
 function generateDUP(lifts, cfg) {
@@ -439,6 +527,9 @@ document.getElementById("generateBtn").addEventListener("click", () => {
         setsCount: numVal("blockRealSets", 3),
         roundIncrement,
       },
+      peakWeek: document.getElementById("blockIncludePeakWeek").checked
+        ? { roundIncrement, peakDate: document.getElementById("blockUsePeakDate").checked ? document.getElementById("blockPeakDate").value : null }
+        : null,
     });
   } else if (templateType.value === "dup") {
     weeks = generateDUP(lifts, {
@@ -525,9 +616,10 @@ function renderProgram() {
         main.sets.forEach((s, i) => {
           const row = document.createElement("div");
           row.className = "set-row";
+          const tag = s.attemptLabel ? `${s.attemptLabel} · ` : s.warmup ? "熱身 · " : "";
           row.textContent = s.instruction
             ? `第${i + 1}組 · ${s.instruction}`
-            : `第${i + 1}組 · ${s.weight}kg × ${formatReps(s.reps, s.amrap)}${s.percent ? `(${s.percent}%)` : ""}`;
+            : `第${i + 1}組 · ${tag}${s.weight}kg × ${formatReps(s.reps, s.amrap)}${s.percent ? `(${s.percent}%)` : ""}`;
           db.appendChild(row);
         });
       }
