@@ -443,6 +443,10 @@ footer {
   margin-bottom: 10px;
 }
 
+.stat-tiles-5 {
+  grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
+}
+
 .stat-tile {
   background: var(--surface);
   border-radius: 10px;

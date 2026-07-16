@@ -558,6 +558,20 @@
         <input type="number" id="logRpe" min="1" max="10" step="0.5" />
       </div>
       <div class="field-row">
+        <label>痠痛/不適部位(選填,訓練後或隔天)</label>
+        <input type="text" id="logSoreness" placeholder="例如:右肩、下背緊繃" />
+      </div>
+      <div class="field-row">
+        <label>不適程度(選填)</label>
+        <select id="logSorenessLevel">
+          <option value="">未填寫</option>
+          <option value="1">1 輕微</option>
+          <option value="2">2 中等</option>
+          <option value="3">3 明顯</option>
+          <option value="4">4 嚴重</option>
+        </select>
+      </div>
+      <div class="field-row">
         <label>備註</label>
         <input type="text" id="logNotes" placeholder="選填" />
       </div>
@@ -569,7 +583,7 @@
       <div class="table-wrap">
         <table id="logTable">
           <thead>
-            <tr><th>日期</th><th>動作</th><th>重量</th><th>組x次</th><th>RPE</th><th>備註</th><th></th></tr>
+            <tr><th>日期</th><th>動作</th><th>重量</th><th>組x次</th><th>RPE</th><th>痠痛/不適</th><th>備註</th><th></th></tr>
           </thead>
           <tbody id="logTableBody"></tbody>
         </table>
@@ -589,11 +603,13 @@
   <!-- 訓練量分析 -->
   <section class="tab-panel" id="panel-volume">
     <section class="card">
-      <h2>MEV / MRV 訓練量分析</h2>
+      <h2>MV / MEV / MAV / MRV 訓練量分析</h2>
       <p class="note" style="margin-top:0;">
-        MEV(最小有效訓練量)= 能觀察到進步的最低每週組數;MRV(最大可恢復訓練量)= 還能恢復的每週組數上限。
-        這裡是依「每週訓練紀錄組數」對照「當週估計 1RM 是否還在進步」的資料驅動推估,不是真正的 RP 方法論
-        (沒有收集痠痛、關節壓力等主觀恢復指標),記錄週數越多,估計會越準。分開計算蹲舉、臥推、硬舉。
+        MV(維持量)= 維持現有肌力/肌肉量所需的最低組數;MEV(最低有效量)= 能觀察到進步的最低組數;
+        MAV(最大適應量)= 效益最好的組數範圍,依週期不同會浮動;MRV(最大可恢復量)= 超過就無法完全恢復的組數上限。
+        MEV、MRV 是依「每週訓練紀錄組數」對照「當週估計 1RM 是否還在進步」的資料驅動推估,MV、MAV 再由
+        MEV/MRV 換算而來,不是真正完整的 RP 方法論(沒有收集痠痛、關節壓力等主觀恢復指標),記錄週數越多估計會越準。
+        分開計算蹲舉、臥推、硬舉。
       </p>
       <div id="volumeAnalysis"></div>
     </section>

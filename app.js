@@ -461,6 +461,27 @@ function standardWeeklySets(liftName, phase) {
   return row ? Math.floor(row[phase]) : null;
 }
 
+// Volume should climb from MEV toward that phase's ceiling over the course of the
+// phase, never sit at the ceiling from week one. Floor prefers the lift's real
+// logged-data MEV estimate (see estimateVolumeLandmarks) and falls back to the
+// generic defaultMEV() when there isn't enough log history yet.
+function standardWeeklySetsFloor(liftName) {
+  const lift = data.lifts.find((l) => l.name === liftName);
+  if (lift) {
+    const series = weeklyVolumeSeries(lift, data.logs);
+    if (series.length >= 3) return estimateVolumeLandmarks(liftName, series).mev;
+  }
+  return defaultMEV(liftName);
+}
+
+function standardWeeklySetsForWeek(liftName, phase, weekIndex, weeksCount) {
+  const ceiling = standardWeeklySets(liftName, phase);
+  if (ceiling === null) return null;
+  const floor = Math.min(standardWeeklySetsFloor(liftName), ceiling);
+  const t = weeksCount <= 1 ? 1 : weekIndex / (weeksCount - 1);
+  return Math.round(floor + (ceiling - floor) * t);
+}
+
 function generateAdvancedBlock(lifts, cfg) {
   const accWeeksCount = Math.min(4, cfg.acc.weeksCount);
   const groups = groupLiftsPairs(lifts);
@@ -472,7 +493,7 @@ function generateAdvancedBlock(lifts, cfg) {
     const days = groups.map((group) => ({
       mainLifts: mainLiftsFromGroup(group, (lift) => {
         const setsCount = cfg.useStandardSets
-          ? standardWeeklySets(lift.name, "hypertrophy") ?? genericSetsCount
+          ? standardWeeklySetsForWeek(lift.name, "hypertrophy", w, accWeeksCount) ?? genericSetsCount
           : genericSetsCount;
         const weight = cfg.acc.progression === "load"
           ? roundToIncrement(lift.oneRM * (cfg.acc.startPct / 100) + w * cfg.acc.weeklyKg, cfg.acc.roundIncrement)
@@ -495,6 +516,7 @@ function generateAdvancedBlock(lifts, cfg) {
   for (let w = 0; w < cfg.combined.totalWeeks; w++) {
     const isTouch = (w + 1) % cfg.combined.touchEvery === 0;
     let percent, reps, genericSetsCount, label;
+    const thisTouchIndex = touchIndex;
     if (isTouch) {
       const t = totalTouches <= 1 ? 1 : touchIndex / (totalTouches - 1);
       percent = cfg.combined.realStartPct + (cfg.combined.realEndPct - cfg.combined.realStartPct) * t;
@@ -517,7 +539,9 @@ function generateAdvancedBlock(lifts, cfg) {
     const days = groups.map((group) => ({
       mainLifts: mainLiftsFromGroup(group, (lift) => {
         const setsCount = cfg.useStandardSets
-          ? standardWeeklySets(lift.name, isTouch ? "peaking" : "strength") ?? genericSetsCount
+          ? (isTouch
+              ? standardWeeklySetsForWeek(lift.name, "peaking", thisTouchIndex, totalTouches)
+              : standardWeeklySetsForWeek(lift.name, "strength", w, cfg.combined.totalWeeks)) ?? genericSetsCount
           : genericSetsCount;
         const weight = (!isTouch && cfg.combined.intProgression === "load")
           ? roundToIncrement(lift.oneRM * (cfg.combined.intStartPct / 100) + w * cfg.combined.intWeeklyKg, cfg.combined.roundIncrement)
@@ -978,6 +1002,9 @@ document.getElementById("addLogBtn").addEventListener("click", () => {
   const reps = Number(document.getElementById("logReps").value) || 1;
   const rpeRaw = document.getElementById("logRpe").value;
   const rpe = rpeRaw === "" ? null : Number(rpeRaw);
+  const soreness = document.getElementById("logSoreness").value.trim();
+  const sorenessLevelRaw = document.getElementById("logSorenessLevel").value;
+  const sorenessLevel = sorenessLevelRaw === "" ? null : Number(sorenessLevelRaw);
   const notes = document.getElementById("logNotes").value.trim();
 
   if (!exerciseName) {
@@ -985,24 +1012,31 @@ document.getElementById("addLogBtn").addEventListener("click", () => {
     return;
   }
 
-  data.logs.push({ id: uid(), date, liftId, exerciseName, weight, sets, reps, rpe, notes });
+  data.logs.push({ id: uid(), date, liftId, exerciseName, weight, sets, reps, rpe, soreness, sorenessLevel, notes });
   saveData();
   document.getElementById("logWeight").value = "";
+  document.getElementById("logSoreness").value = "";
+  document.getElementById("logSorenessLevel").value = "";
   document.getElementById("logNotes").value = "";
   renderLogTable();
 });
 
 function renderLogTable() {
   logTableBody.innerHTML = "";
-  const sorted = [...data.logs].sort((a, b) => (a.date < b.date ? 1 : -1));
+  const sorted = [...data.logs].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
   for (const entry of sorted) {
     const tr = document.createElement("tr");
+    const sorenessLevelLabel = { 1: "輕微", 2: "中等", 3: "明顯", 4: "嚴重" }[entry.sorenessLevel] || "";
+    const sorenessText = entry.soreness
+      ? `${entry.soreness}${sorenessLevelLabel ? `(${sorenessLevelLabel})` : ""}`
+      : "-";
     const cells = [
       entry.date,
       entry.exerciseName,
       `${entry.weight}kg`,
       `${entry.sets}x${entry.reps}`,
       entry.rpe ?? "-",
+      sorenessText,
       entry.notes || "-",
     ];
     for (const c of cells) {
@@ -1088,17 +1122,27 @@ function weeklyVolumeSeries(lift, logs) {
     .sort((a, b) => (a.week < b.week ? -1 : 1));
 }
 
+// Derives the full 4-point RP volume-landmark set from MEV/MRV:
+// MV (maintenance) ~= half of MEV; MAV (the productive middle zone) spans
+// roughly 30%-85% of the way from MEV to MRV.
+function deriveFullLandmarks(mev, mrv) {
+  const mv = Math.max(1, Math.round(mev * 0.5));
+  const mavLow = Math.round(mev + (mrv - mev) * 0.3);
+  const mavHigh = Math.round(mev + (mrv - mev) * 0.85);
+  return { mv, mev, mavLow, mavHigh, mrv };
+}
+
 // Data-driven MEV/MRV heuristic: weeks where e1RM improved vs the prior week suggest
 // that volume level is still "effective" (>= MEV); weeks where it stalled/dropped
 // suggest that volume level is at/above MRV. Falls back to lift-specific defaults
-// when there isn't enough history to say anything (< 3 weeks logged).
+// when there isn't enough history to say anything (< 3 weeks logged). MV and MAV
+// are then derived from the resulting MEV/MRV.
 function estimateVolumeLandmarks(liftName, series) {
   const defMev = defaultMEV(liftName);
   const defMrv = defaultMRV(liftName);
   if (series.length < 3) {
     return {
-      mev: defMev,
-      mrv: defMrv,
+      ...deriveFullLandmarks(defMev, defMrv),
       confidence: "default",
       note: `資料不足(少於 3 週訓練紀錄),顯示 ${liftName} 的參考預設值。`,
     };
@@ -1120,8 +1164,7 @@ function estimateVolumeLandmarks(liftName, series) {
     mrv = defMrv;
   }
   return {
-    mev,
-    mrv,
+    ...deriveFullLandmarks(mev, mrv),
     confidence: "estimated",
     note: `依 ${series.length} 週訓練紀錄推估,之後每新增紀錄會持續更新。`,
   };
@@ -1147,12 +1190,14 @@ function renderVolumeAnalysis() {
     card.appendChild(h3);
 
     const tiles = document.createElement("div");
-    tiles.className = "stat-tiles";
+    tiles.className = "stat-tiles stat-tiles-5";
     const thisWeekSets = series.length ? series[series.length - 1].sets : 0;
     const tileData = [
       ["本週組數", thisWeekSets],
-      ["估計 MEV", landmarks.mev],
-      ["估計 MRV", landmarks.mrv],
+      ["MV 維持量", landmarks.mv],
+      ["MEV 最低有效量", landmarks.mev],
+      ["MAV 最大適應量", `${landmarks.mavLow}–${landmarks.mavHigh}`],
+      ["MRV 最大可恢復量", landmarks.mrv],
     ];
     for (const [label, value] of tileData) {
       const tile = document.createElement("div");
@@ -1176,18 +1221,19 @@ function renderVolumeAnalysis() {
 
     const chartHost = document.createElement("div");
     card.appendChild(chartHost);
-    renderVolumeBarChart(chartHost, series, landmarks.mev, landmarks.mrv, colorVar);
+    renderVolumeBarChart(chartHost, series, landmarks, colorVar);
 
     container.appendChild(card);
   });
 }
 
-function renderVolumeBarChart(container, series, mev, mrv, colorVar) {
+function renderVolumeBarChart(container, series, landmarks, colorVar) {
   container.innerHTML = "";
   if (series.length === 0) {
     container.innerHTML = '<p class="chart-empty">還沒有這個動作的訓練紀錄。</p>';
     return;
   }
+  const { mv, mev, mavLow, mavHigh, mrv } = landmarks;
 
   const W = 640, H = 220, padL = 40, padR = 16, padT = 16, padB = 26;
   const maxSets = Math.max(mrv, ...series.map((s) => s.sets));
@@ -1201,14 +1247,14 @@ function renderVolumeBarChart(container, series, mev, mrv, colorVar) {
   svg.style.height = "auto";
   svg.style.display = "block";
 
-  // MEV-MRV productive-zone band
+  // MAV productive-zone band (the RP "sweet spot" between MEV and MRV)
   const band = document.createElementNS(svgNS, "rect");
   band.setAttribute("x", padL);
-  band.setAttribute("y", yScale(mrv));
+  band.setAttribute("y", yScale(mavHigh));
   band.setAttribute("width", W - padL - padR);
-  band.setAttribute("height", Math.max(0, yScale(mev) - yScale(mrv)));
+  band.setAttribute("height", Math.max(0, yScale(mavLow) - yScale(mavHigh)));
   band.setAttribute("fill", `var(${colorVar})`);
-  band.setAttribute("opacity", "0.08");
+  band.setAttribute("opacity", "0.1");
   svg.appendChild(band);
 
   // gridlines + y labels
@@ -1263,8 +1309,13 @@ function renderVolumeBarChart(container, series, mev, mrv, colorVar) {
     }
   });
 
-  // MEV / MRV reference lines with direct labels
-  for (const [value, labelText, dash] of [[mev, `MEV ${mev}`, "2,3"], [mrv, `MRV ${mrv}`, "5,3"]]) {
+  // MV / MEV / MRV reference lines with direct labels (MAV is shown as the shaded band above)
+  const refLines = [
+    [mv, `MV ${mv}`, "1,2"],
+    [mev, `MEV ${mev}`, "2,3"],
+    [mrv, `MRV ${mrv}`, "5,3"],
+  ];
+  for (const [value, labelText, dash] of refLines) {
     const y = yScale(value);
     const line = document.createElementNS(svgNS, "line");
     line.setAttribute("x1", padL);
