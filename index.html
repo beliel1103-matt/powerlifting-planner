@@ -287,8 +287,15 @@
             <input type="number" id="advBlockIntEndPct" value="88" min="75" max="103" />
           </div>
         </div>
+        <div class="field-row checkbox-field">
+          <label><input type="checkbox" id="advBlockUseTargetRM" /> 以「目標次數」為主(特異性適應原則:想進步 5RM 就整個轉化期都練 5RM,而不是練 1RM 或 12RM)</label>
+        </div>
+        <div class="field-row" id="advTargetRMRow" style="display:none;">
+          <label>目標次數(RM)</label>
+          <input type="number" id="advBlockTargetRM" value="5" min="1" max="15" />
+        </div>
         <div class="field-row">
-          <label>轉化期次數(起→迄)</label>
+          <label>轉化期次數(起→迄;勾選上方目標次數時會被覆蓋)</label>
           <div class="inline-pair">
             <input type="number" id="advBlockIntStartReps" value="5" min="1" max="15" />
             <span>→</span>
@@ -325,6 +332,26 @@
         <div class="field-row">
           <label>組數</label>
           <input type="number" id="advBlockRealSets" value="3" min="1" max="10" />
+        </div>
+
+        <h4 class="block-subtitle">減量週(Deload)</h4>
+        <div class="field-row checkbox-field">
+          <label><input type="checkbox" id="advBlockUseDeload" checked /> 每建構幾週後安排一次減量週(積累期＋轉化期全程適用)</label>
+        </div>
+        <div class="field-row">
+          <label>建構:減量 比例(建構幾週接一次減量週)</label>
+          <input type="number" id="advBlockDeloadRatio" value="4" min="2" max="8" />
+        </div>
+        <p class="note" style="margin-top:0;">例如 4:1 代表每練 4 週,第 5 週自動插入減量週,不佔用你設定的積累/轉化週數,是額外加進去的恢復週。</p>
+        <div class="field-row">
+          <label>減量週 % 1RM / 組數 / 次數</label>
+          <div class="inline-pair">
+            <input type="number" id="advBlockDeloadPct" value="55" min="30" max="70" />
+            <span>×</span>
+            <input type="number" id="advBlockDeloadSets" value="3" min="1" max="6" />
+            <span>×</span>
+            <input type="number" id="advBlockDeloadReps" value="5" min="1" max="10" />
+          </div>
         </div>
 
         <h4 class="block-subtitle">巔峰測試週(Peak / Test week)</h4>

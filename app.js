@@ -203,6 +203,12 @@ advBlockPeakDate.addEventListener("change", () => {
   if (advBlockUsePeakDate.checked) recalcAdvPeakDateSplit();
 });
 
+const advBlockUseTargetRM = document.getElementById("advBlockUseTargetRM");
+const advTargetRMRow = document.getElementById("advTargetRMRow");
+advBlockUseTargetRM.addEventListener("change", () => {
+  advTargetRMRow.style.display = advBlockUseTargetRM.checked ? "block" : "none";
+});
+
 function renderLiftCheckboxes() {
   const checkedIds = new Set(
     [...liftCheckboxes.querySelectorAll("input:checked")].map((el) => el.value)
@@ -404,6 +410,43 @@ function progressionValues(w, weeksCount, cfg) {
   return { percent, reps, setsCount };
 }
 
+function generateDeloadWeek(lifts, cfg, weekNumber) {
+  const groups = groupLiftsPairs(lifts);
+  const days = groups.map((group) => ({
+    mainLifts: mainLiftsFromGroup(group, (lift) => {
+      const weight = roundToIncrement(lift.oneRM * (cfg.pct / 100), cfg.roundIncrement);
+      return Array.from({ length: cfg.sets }, () => ({
+        percent: cfg.pct,
+        reps: cfg.reps,
+        amrap: false,
+        weight,
+      }));
+    }),
+    accessories: [],
+  }));
+  return { weekNumber, phaseLabel: "減量週(Deload)", days };
+}
+
+// Splices an extra deload week in after every `ratio` build weeks (e.g. 4:1 = 4 weeks
+// on, 1 week deload), renumbering everything. Deloads are additive — they don't
+// consume any of the accumulation/intensification weeks the user configured.
+function insertDeloads(weeks, deloadCfg, lifts) {
+  const result = [];
+  let buildCount = 0;
+  let weekNumber = 1;
+  for (const week of weeks) {
+    result.push({ ...week, weekNumber });
+    weekNumber++;
+    buildCount++;
+    if (buildCount === deloadCfg.ratio) {
+      result.push(generateDeloadWeek(lifts, deloadCfg, weekNumber));
+      weekNumber++;
+      buildCount = 0;
+    }
+  }
+  return { weeks: result, nextWeekNumber: weekNumber };
+}
+
 function generateAdvancedBlock(lifts, cfg) {
   const accWeeksCount = Math.min(4, cfg.acc.weeksCount);
   const groups = groupLiftsPairs(lifts);
@@ -472,10 +515,18 @@ function generateAdvancedBlock(lifts, cfg) {
     weekNumber++;
   }
 
-  if (cfg.peakWeek) {
-    weeks.push(generatePeakWeek(lifts, cfg.peakWeek, weekNumber));
+  let finalWeeks = weeks;
+  let nextWeekNumber = weekNumber;
+  if (cfg.deload) {
+    const inserted = insertDeloads(weeks, cfg.deload, lifts);
+    finalWeeks = inserted.weeks;
+    nextWeekNumber = inserted.nextWeekNumber;
   }
-  return weeks;
+
+  if (cfg.peakWeek) {
+    finalWeeks.push(generatePeakWeek(lifts, cfg.peakWeek, nextWeekNumber));
+  }
+  return finalWeeks;
 }
 
 // Weeks remaining until a target date (rounded to the nearest whole week, minimum 1).
@@ -684,8 +735,8 @@ document.getElementById("generateBtn").addEventListener("click", () => {
         intWeeklyKg: numVal("advBlockIntWeeklyKg", 2.5),
         intStartPct: Math.max(75, numVal("advBlockIntStartPct", 78)),
         intEndPct: Math.max(75, numVal("advBlockIntEndPct", 88)),
-        intStartReps: numVal("advBlockIntStartReps", 5),
-        intEndReps: numVal("advBlockIntEndReps", 3),
+        intStartReps: advBlockUseTargetRM.checked ? numVal("advBlockTargetRM", 5) : numVal("advBlockIntStartReps", 5),
+        intEndReps: advBlockUseTargetRM.checked ? numVal("advBlockTargetRM", 5) : numVal("advBlockIntEndReps", 3),
         intStartSets: numVal("advBlockIntStartSets", 4),
         intEndSets: numVal("advBlockIntEndSets", 4),
         realStartPct: Math.max(85, numVal("advBlockRealStartPct", 90)),
@@ -695,6 +746,15 @@ document.getElementById("generateBtn").addEventListener("click", () => {
         realSets: numVal("advBlockRealSets", 3),
         roundIncrement,
       },
+      deload: document.getElementById("advBlockUseDeload").checked
+        ? {
+            ratio: numVal("advBlockDeloadRatio", 4),
+            pct: numVal("advBlockDeloadPct", 55),
+            sets: numVal("advBlockDeloadSets", 3),
+            reps: numVal("advBlockDeloadReps", 5),
+            roundIncrement,
+          }
+        : null,
       peakWeek: document.getElementById("advBlockIncludePeakWeek").checked
         ? { roundIncrement, peakDate: advBlockUsePeakDate.checked ? advBlockPeakDate.value : null }
         : null,
