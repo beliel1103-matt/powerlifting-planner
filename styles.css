@@ -246,6 +246,30 @@ button {
 
 .block-subtitle:first-of-type { margin-top: 4px; }
 
+.calc-result {
+  margin-top: 16px;
+  border-top: 1px dashed var(--grid);
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.calc-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.9rem;
+  color: var(--text-soft);
+}
+
+.calc-row-main {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--accent);
+  padding-top: 4px;
+  border-top: 1px solid var(--grid);
+}
+
 .main-lift-heading {
   font-size: 0.8rem;
   color: var(--text-soft);

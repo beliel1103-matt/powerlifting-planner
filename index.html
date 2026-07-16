@@ -16,10 +16,47 @@
 
   <nav class="tabs" id="tabs">
     <button class="tab-btn active" data-tab="setup">最大重量</button>
+    <button class="tab-btn" data-tab="calc">1RM 計算機</button>
     <button class="tab-btn" data-tab="program">課表產生器</button>
     <button class="tab-btn" data-tab="log">訓練紀錄</button>
     <button class="tab-btn" data-tab="progress">進度</button>
   </nav>
+
+  <!-- 1RM 計算機 -->
+  <section class="tab-panel" id="panel-calc">
+    <section class="card">
+      <h2>估算 1RM</h2>
+      <p class="note" style="margin-top:0;">輸入某一組實際完成的重量與次數,取 Brzycki 與 Epley 兩個公式的平均值作為估算 1RM。次數建議在 10 下以內,次數太高時公式誤差會變大。</p>
+      <div class="field-row triple">
+        <div>
+          <label>重量 (kg)</label>
+          <input type="number" id="calcWeight" min="0" step="0.5" value="100" />
+        </div>
+        <div>
+          <label>次數</label>
+          <input type="number" id="calcReps" min="1" max="15" step="1" value="5" />
+        </div>
+        <div style="display:flex;align-items:flex-end;">
+          <button class="btn-primary" id="calcBtn" style="width:100%;">計算</button>
+        </div>
+      </div>
+      <div id="calcResult" class="calc-result" style="display:none;">
+        <div class="calc-row"><span>Brzycki 公式</span><span id="calcBrzycki"></span></div>
+        <div class="calc-row"><span>Epley 公式</span><span id="calcEpley"></span></div>
+        <div class="calc-row calc-row-main"><span>平均估算 1RM</span><span id="calcAverage"></span></div>
+      </div>
+    </section>
+
+    <section class="card" id="calcApplyCard" style="display:none;">
+      <h2>套用到動作</h2>
+      <div class="field-row">
+        <label>選擇動作</label>
+        <select id="calcApplyLift"></select>
+      </div>
+      <button class="btn-secondary" id="calcApplyBtn">把估算 1RM 套用為此動作的目前 1RM</button>
+      <p class="note" id="calcApplyNote"></p>
+    </section>
+  </section>
 
   <!-- 最大重量 -->
   <section class="tab-panel active" id="panel-setup">

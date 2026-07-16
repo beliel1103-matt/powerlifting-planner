@@ -1235,11 +1235,71 @@ function renderLineChart(container, series) {
 }
 
 // ---------- Init ----------
+// ---------- 1RM Calculator ----------
+function brzyckiMax(weight, reps) {
+  return weight / (1.0278 - 0.0278 * reps);
+}
+
+function epleyMax(weight, reps) {
+  return weight * (1 + 0.0333 * reps);
+}
+
+let lastCalcAverage = null;
+
+function populateCalcApplyLift() {
+  const select = document.getElementById("calcApplyLift");
+  const prev = select.value;
+  select.innerHTML = "";
+  for (const lift of data.lifts) {
+    const opt = document.createElement("option");
+    opt.value = lift.id;
+    opt.textContent = lift.name;
+    select.appendChild(opt);
+  }
+  if ([...select.options].some((o) => o.value === prev)) select.value = prev;
+}
+
+document.getElementById("calcBtn").addEventListener("click", () => {
+  const weight = Number(document.getElementById("calcWeight").value) || 0;
+  const reps = Number(document.getElementById("calcReps").value) || 1;
+  if (weight <= 0 || reps <= 0 || reps >= 37) {
+    alert("請輸入有效的重量與次數(次數需小於 37,建議 10 下以內較準確)");
+    return;
+  }
+  const brzycki = brzyckiMax(weight, reps);
+  const epley = epleyMax(weight, reps);
+  const average = Math.round((brzycki + epley) / 2);
+  lastCalcAverage = average;
+
+  document.getElementById("calcBrzycki").textContent = `${brzycki.toFixed(1)} kg`;
+  document.getElementById("calcEpley").textContent = `${epley.toFixed(1)} kg`;
+  document.getElementById("calcAverage").textContent = `${average} kg`;
+  document.getElementById("calcResult").style.display = "flex";
+
+  populateCalcApplyLift();
+  document.getElementById("calcApplyCard").style.display = "block";
+  document.getElementById("calcApplyNote").textContent = "";
+});
+
+document.getElementById("calcApplyBtn").addEventListener("click", () => {
+  if (lastCalcAverage === null) return;
+  const liftId = document.getElementById("calcApplyLift").value;
+  const lift = data.lifts.find((l) => l.id === liftId);
+  if (!lift) return;
+  lift.oneRM = lastCalcAverage;
+  saveData();
+  renderLifts();
+  renderLiftCheckboxes();
+  populateLogLiftSelect();
+  document.getElementById("calcApplyNote").textContent = `已把 ${lift.name} 的 1RM 更新為 ${lastCalcAverage} kg。`;
+});
+
 function init() {
   logDate.value = todayStr();
   renderLifts();
   renderLiftCheckboxes();
   populateLogLiftSelect();
+  populateCalcApplyLift();
   renderProgram();
   renderLogTable();
 }
