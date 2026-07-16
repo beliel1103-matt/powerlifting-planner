@@ -447,6 +447,19 @@ function insertDeloads(weeks, deloadCfg, lifts) {
   return { weeks: result, nextWeekNumber: weekNumber };
 }
 
+// Reference weekly set ceilings per lift per phase (per the user's own programming
+// notes), used as an optional override in place of the generic ramped set counts.
+const LIFT_WEEKLY_SETS = {
+  "蹲舉": { hypertrophy: 14, strength: 9, peaking: 6 },
+  "臥推": { hypertrophy: 17, strength: 11, peaking: 8.5 },
+  "硬拉": { hypertrophy: 11, strength: 7, peaking: 4.5 },
+};
+
+function standardWeeklySets(liftName, phase) {
+  const row = LIFT_WEEKLY_SETS[liftName];
+  return row ? Math.floor(row[phase]) : null;
+}
+
 function generateAdvancedBlock(lifts, cfg) {
   const accWeeksCount = Math.min(4, cfg.acc.weeksCount);
   const groups = groupLiftsPairs(lifts);
@@ -454,9 +467,12 @@ function generateAdvancedBlock(lifts, cfg) {
   let weekNumber = 1;
 
   for (let w = 0; w < accWeeksCount; w++) {
-    const { percent, reps, setsCount } = progressionValues(w, accWeeksCount, cfg.acc);
+    const { percent, reps, setsCount: genericSetsCount } = progressionValues(w, accWeeksCount, cfg.acc);
     const days = groups.map((group) => ({
       mainLifts: mainLiftsFromGroup(group, (lift) => {
+        const setsCount = cfg.useStandardSets
+          ? standardWeeklySets(lift.name, "hypertrophy") ?? genericSetsCount
+          : genericSetsCount;
         const weight = cfg.acc.progression === "load"
           ? roundToIncrement(lift.oneRM * (cfg.acc.startPct / 100) + w * cfg.acc.weeklyKg, cfg.acc.roundIncrement)
           : roundToIncrement(lift.oneRM * (percent / 100), cfg.acc.roundIncrement);
@@ -469,7 +485,7 @@ function generateAdvancedBlock(lifts, cfg) {
       }),
       accessories: [],
     }));
-    weeks.push({ weekNumber, phaseLabel: `積累期 · 第${w + 1}週`, days });
+    weeks.push({ weekNumber, phaseLabel: `肌肥大期 · 第${w + 1}週`, days });
     weekNumber++;
   }
 
@@ -477,16 +493,16 @@ function generateAdvancedBlock(lifts, cfg) {
   let touchIndex = 0;
   for (let w = 0; w < cfg.combined.totalWeeks; w++) {
     const isTouch = (w + 1) % cfg.combined.touchEvery === 0;
-    let percent, reps, setsCount, label;
+    let percent, reps, genericSetsCount, label;
     if (isTouch) {
       const t = totalTouches <= 1 ? 1 : touchIndex / (totalTouches - 1);
       percent = cfg.combined.realStartPct + (cfg.combined.realEndPct - cfg.combined.realStartPct) * t;
       reps = Math.round(cfg.combined.realStartReps + (cfg.combined.realEndReps - cfg.combined.realStartReps) * t);
-      setsCount = cfg.combined.realSets;
-      label = `轉化期 · 第${w + 1}週(觸及實現期強度)`;
+      genericSetsCount = cfg.combined.realSets;
+      label = `力量期 · 第${w + 1}週(觸及高峰期強度)`;
       touchIndex++;
     } else {
-      ({ percent, reps, setsCount } = progressionValues(w, cfg.combined.totalWeeks, {
+      ({ percent, reps, setsCount: genericSetsCount } = progressionValues(w, cfg.combined.totalWeeks, {
         progression: cfg.combined.intProgression,
         startPct: cfg.combined.intStartPct,
         endPct: cfg.combined.intEndPct,
@@ -495,10 +511,13 @@ function generateAdvancedBlock(lifts, cfg) {
         startSets: cfg.combined.intStartSets,
         endSets: cfg.combined.intEndSets,
       }));
-      label = `轉化期 · 第${w + 1}週`;
+      label = `力量期 · 第${w + 1}週`;
     }
     const days = groups.map((group) => ({
       mainLifts: mainLiftsFromGroup(group, (lift) => {
+        const setsCount = cfg.useStandardSets
+          ? standardWeeklySets(lift.name, isTouch ? "peaking" : "strength") ?? genericSetsCount
+          : genericSetsCount;
         const weight = (!isTouch && cfg.combined.intProgression === "load")
           ? roundToIncrement(lift.oneRM * (cfg.combined.intStartPct / 100) + w * cfg.combined.intWeeklyKg, cfg.combined.roundIncrement)
           : roundToIncrement(lift.oneRM * (percent / 100), cfg.combined.roundIncrement);
@@ -716,6 +735,7 @@ document.getElementById("generateBtn").addEventListener("click", () => {
     });
   } else if (templateType.value === "advancedBlock") {
     weeks = generateAdvancedBlock(lifts, {
+      useStandardSets: document.getElementById("advBlockUseStandardSets").checked,
       acc: {
         weeksCount: Math.min(4, numVal("advBlockAccWeeks", 3)),
         progression: document.getElementById("advBlockAccProgression").value,
