@@ -20,6 +20,7 @@
     <button class="tab-btn" data-tab="program">課表產生器</button>
     <button class="tab-btn" data-tab="log">訓練紀錄</button>
     <button class="tab-btn" data-tab="progress">進度</button>
+    <button class="tab-btn" data-tab="volume">訓練量分析</button>
   </nav>
 
   <!-- 1RM 計算機 -->
@@ -582,6 +583,19 @@
       <h2>估計 1RM 趨勢</h2>
       <p class="note">依據訓練紀錄中每次的最佳一組,用 Epley 公式估算當天的 1RM 走勢。</p>
       <div id="progressChart"></div>
+    </section>
+  </section>
+
+  <!-- 訓練量分析 -->
+  <section class="tab-panel" id="panel-volume">
+    <section class="card">
+      <h2>MEV / MRV 訓練量分析</h2>
+      <p class="note" style="margin-top:0;">
+        MEV(最小有效訓練量)= 能觀察到進步的最低每週組數;MRV(最大可恢復訓練量)= 還能恢復的每週組數上限。
+        這裡是依「每週訓練紀錄組數」對照「當週估計 1RM 是否還在進步」的資料驅動推估,不是真正的 RP 方法論
+        (沒有收集痠痛、關節壓力等主觀恢復指標),記錄週數越多,估計會越準。分開計算蹲舉、臥推、硬舉。
+      </p>
+      <div id="volumeAnalysis"></div>
     </section>
   </section>
 

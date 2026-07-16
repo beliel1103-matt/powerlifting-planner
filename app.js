@@ -54,6 +54,7 @@ document.getElementById("tabs").addEventListener("click", (e) => {
   const tab = btn.dataset.tab;
   document.querySelectorAll(".tab-panel").forEach((p) => p.classList.toggle("active", p.id === `panel-${tab}`));
   if (tab === "progress") renderProgress();
+  if (tab === "volume") renderVolumeAnalysis();
 });
 
 // ---------- Setup: lifts / 1RM ----------
@@ -1048,6 +1049,244 @@ function computeSeries() {
 function renderProgress() {
   const series = computeSeries();
   renderLineChart(document.getElementById("progressChart"), series);
+}
+
+// ---------- Volume analysis (MEV / MRV estimation) ----------
+// Reuses the hypertrophy-phase weekly-set ceiling (LIFT_WEEKLY_SETS) as a
+// lift-specific default MRV reference when there isn't enough log history yet.
+function defaultMRV(liftName) {
+  const row = LIFT_WEEKLY_SETS[liftName];
+  return row ? Math.floor(row.hypertrophy) : 12;
+}
+
+function defaultMEV(liftName) {
+  return Math.max(1, Math.round(defaultMRV(liftName) * 0.45));
+}
+
+function isoWeekStart(dateStr) {
+  const d = new Date(dateStr);
+  const day = d.getDay(); // 0=Sun..6=Sat
+  const diff = (day === 0 ? -6 : 1) - day; // shift back to Monday
+  const monday = new Date(d);
+  monday.setDate(d.getDate() + diff);
+  return `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, "0")}-${String(monday.getDate()).padStart(2, "0")}`;
+}
+
+function weeklyVolumeSeries(lift, logs) {
+  const byWeek = new Map();
+  for (const entry of logs) {
+    if (entry.liftId !== lift.id) continue;
+    const wk = isoWeekStart(entry.date);
+    const cur = byWeek.get(wk) || { sets: 0, bestE1RM: 0 };
+    cur.sets += entry.sets;
+    const e1rm = epley1RM(entry.weight, entry.reps);
+    if (e1rm > cur.bestE1RM) cur.bestE1RM = e1rm;
+    byWeek.set(wk, cur);
+  }
+  return [...byWeek.entries()]
+    .map(([week, v]) => ({ week, sets: v.sets, e1rm: v.bestE1RM }))
+    .sort((a, b) => (a.week < b.week ? -1 : 1));
+}
+
+// Data-driven MEV/MRV heuristic: weeks where e1RM improved vs the prior week suggest
+// that volume level is still "effective" (>= MEV); weeks where it stalled/dropped
+// suggest that volume level is at/above MRV. Falls back to lift-specific defaults
+// when there isn't enough history to say anything (< 3 weeks logged).
+function estimateVolumeLandmarks(liftName, series) {
+  const defMev = defaultMEV(liftName);
+  const defMrv = defaultMRV(liftName);
+  if (series.length < 3) {
+    return {
+      mev: defMev,
+      mrv: defMrv,
+      confidence: "default",
+      note: `資料不足(少於 3 週訓練紀錄),顯示 ${liftName} 的參考預設值。`,
+    };
+  }
+  const improvedSets = [];
+  const stalledSets = [];
+  for (let i = 1; i < series.length; i++) {
+    const delta = series[i].e1rm - series[i - 1].e1rm;
+    if (delta > 0.5) improvedSets.push(series[i].sets);
+    else stalledSets.push(series[i].sets);
+  }
+  const mev = improvedSets.length ? Math.min(...improvedSets) : defMev;
+  let mrv;
+  if (stalledSets.length) {
+    mrv = Math.max(mev + 2, Math.min(...stalledSets) - 1);
+  } else if (improvedSets.length) {
+    mrv = Math.max(...improvedSets) + 3;
+  } else {
+    mrv = defMrv;
+  }
+  return {
+    mev,
+    mrv,
+    confidence: "estimated",
+    note: `依 ${series.length} 週訓練紀錄推估,之後每新增紀錄會持續更新。`,
+  };
+}
+
+function renderVolumeAnalysis() {
+  const container = document.getElementById("volumeAnalysis");
+  container.innerHTML = "";
+  if (data.lifts.length === 0) {
+    container.innerHTML = '<p class="chart-empty">還沒有追蹤任何動作。</p>';
+    return;
+  }
+  data.lifts.forEach((lift, i) => {
+    const series = weeklyVolumeSeries(lift, data.logs);
+    const landmarks = estimateVolumeLandmarks(lift.name, series);
+    const colorVar = `--series-${(i % 6) + 1}`;
+
+    const card = document.createElement("div");
+    card.className = "lift-volume-card";
+
+    const h3 = document.createElement("h3");
+    h3.textContent = lift.name;
+    card.appendChild(h3);
+
+    const tiles = document.createElement("div");
+    tiles.className = "stat-tiles";
+    const thisWeekSets = series.length ? series[series.length - 1].sets : 0;
+    const tileData = [
+      ["本週組數", thisWeekSets],
+      ["估計 MEV", landmarks.mev],
+      ["估計 MRV", landmarks.mrv],
+    ];
+    for (const [label, value] of tileData) {
+      const tile = document.createElement("div");
+      tile.className = "stat-tile";
+      const l = document.createElement("span");
+      l.className = "stat-label";
+      l.textContent = label;
+      const v = document.createElement("span");
+      v.className = "stat-value";
+      v.textContent = value;
+      tile.appendChild(l);
+      tile.appendChild(v);
+      tiles.appendChild(tile);
+    }
+    card.appendChild(tiles);
+
+    const note = document.createElement("p");
+    note.className = "confidence-note";
+    note.textContent = landmarks.note;
+    card.appendChild(note);
+
+    const chartHost = document.createElement("div");
+    card.appendChild(chartHost);
+    renderVolumeBarChart(chartHost, series, landmarks.mev, landmarks.mrv, colorVar);
+
+    container.appendChild(card);
+  });
+}
+
+function renderVolumeBarChart(container, series, mev, mrv, colorVar) {
+  container.innerHTML = "";
+  if (series.length === 0) {
+    container.innerHTML = '<p class="chart-empty">還沒有這個動作的訓練紀錄。</p>';
+    return;
+  }
+
+  const W = 640, H = 220, padL = 40, padR = 16, padT = 16, padB = 26;
+  const maxSets = Math.max(mrv, ...series.map((s) => s.sets));
+  const vMax = Math.ceil((maxSets + 2) / 2) * 2;
+  const yScale = (v) => padT + (1 - v / vMax) * (H - padT - padB);
+
+  const svgNS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgNS, "svg");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.style.width = "100%";
+  svg.style.height = "auto";
+  svg.style.display = "block";
+
+  // MEV-MRV productive-zone band
+  const band = document.createElementNS(svgNS, "rect");
+  band.setAttribute("x", padL);
+  band.setAttribute("y", yScale(mrv));
+  band.setAttribute("width", W - padL - padR);
+  band.setAttribute("height", Math.max(0, yScale(mev) - yScale(mrv)));
+  band.setAttribute("fill", `var(${colorVar})`);
+  band.setAttribute("opacity", "0.08");
+  svg.appendChild(band);
+
+  // gridlines + y labels
+  const gridCount = 4;
+  for (let i = 0; i <= gridCount; i++) {
+    const v = (vMax * i) / gridCount;
+    const y = yScale(v);
+    const line = document.createElementNS(svgNS, "line");
+    line.setAttribute("x1", padL);
+    line.setAttribute("x2", W - padR);
+    line.setAttribute("y1", y);
+    line.setAttribute("y2", y);
+    line.setAttribute("stroke", "var(--grid)");
+    line.setAttribute("stroke-width", "1");
+    svg.appendChild(line);
+
+    const label = document.createElementNS(svgNS, "text");
+    label.setAttribute("x", padL - 8);
+    label.setAttribute("y", y + 3);
+    label.setAttribute("text-anchor", "end");
+    label.setAttribute("font-size", "10");
+    label.setAttribute("fill", "var(--muted)");
+    label.textContent = Math.round(v);
+    svg.appendChild(label);
+  }
+
+  // bars
+  const bandW = (W - padL - padR) / series.length;
+  const barW = Math.min(28, bandW * 0.6);
+  series.forEach((s, i) => {
+    const cx = padL + bandW * i + bandW / 2;
+    const barH = H - padB - yScale(s.sets);
+    const rect = document.createElementNS(svgNS, "rect");
+    rect.setAttribute("x", cx - barW / 2);
+    rect.setAttribute("y", yScale(s.sets));
+    rect.setAttribute("width", barW);
+    rect.setAttribute("height", Math.max(0, barH));
+    rect.setAttribute("rx", 3);
+    rect.setAttribute("fill", `var(${colorVar})`);
+    svg.appendChild(rect);
+
+    if (i === 0 || i === series.length - 1 || series.length <= 6) {
+      const label = document.createElementNS(svgNS, "text");
+      label.setAttribute("x", cx);
+      label.setAttribute("y", H - padB + 14);
+      label.setAttribute("text-anchor", "middle");
+      label.setAttribute("font-size", "9");
+      label.setAttribute("fill", "var(--muted)");
+      const d = new Date(s.week);
+      label.textContent = `${d.getMonth() + 1}/${d.getDate()}`;
+      svg.appendChild(label);
+    }
+  });
+
+  // MEV / MRV reference lines with direct labels
+  for (const [value, labelText, dash] of [[mev, `MEV ${mev}`, "2,3"], [mrv, `MRV ${mrv}`, "5,3"]]) {
+    const y = yScale(value);
+    const line = document.createElementNS(svgNS, "line");
+    line.setAttribute("x1", padL);
+    line.setAttribute("x2", W - padR);
+    line.setAttribute("y1", y);
+    line.setAttribute("y2", y);
+    line.setAttribute("stroke", "var(--muted)");
+    line.setAttribute("stroke-width", "1.5");
+    line.setAttribute("stroke-dasharray", dash);
+    svg.appendChild(line);
+
+    const label = document.createElementNS(svgNS, "text");
+    label.setAttribute("x", W - padR);
+    label.setAttribute("y", y - 4);
+    label.setAttribute("text-anchor", "end");
+    label.setAttribute("font-size", "10");
+    label.setAttribute("fill", "var(--text-soft)");
+    label.textContent = labelText;
+    svg.appendChild(label);
+  }
+
+  container.appendChild(svg);
 }
 
 function renderLineChart(container, series) {
