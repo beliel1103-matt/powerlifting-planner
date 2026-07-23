@@ -13,6 +13,7 @@ function defaultData() {
     ],
     program: null,
     logs: [],
+    sex: "male",
   };
 }
 
@@ -24,6 +25,7 @@ function loadData() {
     if (!Array.isArray(parsed.lifts) || parsed.lifts.length === 0) throw new Error("bad");
     parsed.logs = Array.isArray(parsed.logs) ? parsed.logs : [];
     parsed.program = parsed.program || null;
+    parsed.sex = parsed.sex === "female" ? "female" : "male";
     return parsed;
   } catch {
     return defaultData();
@@ -970,6 +972,26 @@ const logDate = document.getElementById("logDate");
 const logLiftSelect = document.getElementById("logLiftSelect");
 const logCustomName = document.getElementById("logCustomName");
 const logTableBody = document.getElementById("logTableBody");
+const logBodyweight = document.getElementById("logBodyweight");
+const logBodyweightNote = document.getElementById("logBodyweightNote");
+const userSex = document.getElementById("userSex");
+
+function refreshBodyweightField() {
+  const last = lastKnownBodyweight();
+  if (last) {
+    logBodyweight.value = last;
+    logBodyweightNote.textContent = `沿用上次紀錄的體重(${last}kg),可直接修改。`;
+  } else {
+    logBodyweight.value = "";
+    logBodyweightNote.textContent = "還沒有體重紀錄,請輸入目前體重。";
+  }
+}
+
+userSex.addEventListener("change", () => {
+  data.sex = userSex.value;
+  saveData();
+  renderProgress();
+});
 
 function populateLogLiftSelect() {
   const prev = logLiftSelect.value;
@@ -1002,6 +1024,8 @@ document.getElementById("addLogBtn").addEventListener("click", () => {
   const reps = Number(document.getElementById("logReps").value) || 1;
   const rpeRaw = document.getElementById("logRpe").value;
   const rpe = rpeRaw === "" ? null : Number(rpeRaw);
+  const bodyweightRaw = logBodyweight.value;
+  const bodyweight = bodyweightRaw === "" ? lastKnownBodyweight() : Number(bodyweightRaw);
   const soreness = document.getElementById("logSoreness").value.trim();
   const sorenessLevelRaw = document.getElementById("logSorenessLevel").value;
   const sorenessLevel = sorenessLevelRaw === "" ? null : Number(sorenessLevelRaw);
@@ -1012,12 +1036,13 @@ document.getElementById("addLogBtn").addEventListener("click", () => {
     return;
   }
 
-  data.logs.push({ id: uid(), date, liftId, exerciseName, weight, sets, reps, rpe, soreness, sorenessLevel, notes });
+  data.logs.push({ id: uid(), date, liftId, exerciseName, weight, sets, reps, rpe, bodyweight, soreness, sorenessLevel, notes });
   saveData();
   document.getElementById("logWeight").value = "";
   document.getElementById("logSoreness").value = "";
   document.getElementById("logSorenessLevel").value = "";
   document.getElementById("logNotes").value = "";
+  refreshBodyweightField();
   renderLogTable();
 });
 
@@ -1035,6 +1060,7 @@ function renderLogTable() {
       entry.exerciseName,
       `${entry.weight}kg`,
       `${entry.sets}x${entry.reps}`,
+      entry.bodyweight ? `${entry.bodyweight}kg` : "-",
       entry.rpe ?? "-",
       sorenessText,
       entry.notes || "-",
@@ -1064,6 +1090,26 @@ function epley1RM(weight, reps) {
   return weight * (1 + reps / 30);
 }
 
+// DOTS: current-standard bodyweight-normalized strength score, replaces Wilks.
+// Lets progress be judged fairly even when bodyweight goes up or down.
+const DOTS_COEFFICIENTS = {
+  male: [-0.000001093, 0.0007391293, -0.1918759221, 24.0900756, -307.75076],
+  female: [-0.0000010706, 0.0005158568, -0.1126655495, 13.6175032, -57.96288],
+};
+
+function dotsScore(liftedKg, bodyweightKg, sex) {
+  if (!bodyweightKg || bodyweightKg <= 0) return liftedKg;
+  const [a, b, c, d, e] = DOTS_COEFFICIENTS[sex] || DOTS_COEFFICIENTS.male;
+  const bw = bodyweightKg;
+  const denom = a * bw ** 4 + b * bw ** 3 + c * bw ** 2 + d * bw + e;
+  return (liftedKg * 500) / denom;
+}
+
+function lastKnownBodyweight() {
+  const withBw = data.logs.filter((l) => l.bodyweight).sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  return withBw.length ? withBw[0].bodyweight : null;
+}
+
 function computeSeries() {
   return data.lifts.map((lift, i) => {
     const byDate = new Map();
@@ -1071,18 +1117,34 @@ function computeSeries() {
       if (entry.liftId !== lift.id) continue;
       const e1rm = epley1RM(entry.weight, entry.reps);
       const cur = byDate.get(entry.date);
-      if (!cur || e1rm > cur) byDate.set(entry.date, e1rm);
+      if (!cur || e1rm > cur.value) byDate.set(entry.date, { value: e1rm, bodyweight: entry.bodyweight || null });
     }
     const points = [...byDate.entries()]
-      .map(([date, value]) => ({ date, value }))
+      .map(([date, v]) => ({ date, value: v.value, bodyweight: v.bodyweight }))
       .sort((a, b) => (a.date < b.date ? -1 : 1));
+    // carry the last known bodyweight forward into points that didn't log one
+    let carry = null;
+    for (const p of points) {
+      if (p.bodyweight) carry = p.bodyweight;
+      else if (carry) p.bodyweight = carry;
+    }
     return { id: lift.id, name: lift.name, colorVar: `--series-${(i % 6) + 1}`, points };
   });
 }
 
 function renderProgress() {
-  const series = computeSeries();
-  renderLineChart(document.getElementById("progressChart"), series);
+  const rawSeries = computeSeries();
+  const useDots = document.getElementById("showDotsToggle").checked;
+  const series = useDots
+    ? rawSeries.map((s) => ({
+        ...s,
+        points: s.points.map((p) => ({
+          date: p.date,
+          value: Math.round(dotsScore(p.value, p.bodyweight, data.sex) * 10) / 10,
+        })),
+      }))
+    : rawSeries;
+  renderLineChart(document.getElementById("progressChart"), series, useDots ? "分" : "kg");
 }
 
 // ---------- Volume analysis (MEV / MRV estimation) ----------
@@ -1340,7 +1402,7 @@ function renderVolumeBarChart(container, series, landmarks, colorVar) {
   container.appendChild(svg);
 }
 
-function renderLineChart(container, series) {
+function renderLineChart(container, series, unit = "kg") {
   container.innerHTML = "";
   const withData = series.filter((s) => s.points.length > 0);
   if (withData.length === 0) {
@@ -1508,7 +1570,7 @@ function renderLineChart(container, series) {
       if (!nearestDate || Math.abs(new Date(closest.date).getTime() - t) < Math.abs(new Date(nearestDate).getTime() - t)) {
         nearestDate = closest.date;
       }
-      rows += `<div class="tt-row"><span class="swatch" style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(${s.colorVar})"></span>${s.name}: ${Math.round(closest.value)}kg</div>`;
+      rows += `<div class="tt-row"><span class="swatch" style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(${s.colorVar})"></span>${s.name}: ${Math.round(closest.value)}${unit}</div>`;
     }
     tooltip.innerHTML = `<div class="tt-date">${nearestDate}</div>${rows}`;
     tooltip.style.display = "block";
@@ -1586,12 +1648,16 @@ document.getElementById("calcApplyBtn").addEventListener("click", () => {
 
 function init() {
   logDate.value = todayStr();
+  userSex.value = data.sex;
   renderLifts();
   renderLiftCheckboxes();
   populateLogLiftSelect();
+  refreshBodyweightField();
   populateCalcApplyLift();
   renderProgram();
   renderLogTable();
+
+  document.getElementById("showDotsToggle").addEventListener("change", renderProgress);
 }
 
 init();
